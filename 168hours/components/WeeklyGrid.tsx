@@ -6,6 +6,19 @@ import { formatHour24 } from "@/lib/utils";
 import { setEntries, setEntry, clearEntry, getEntryAt } from "@/lib/storage";
 import EditPanel from "./EditPanel";
 
+function getPillTextColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance > 0.45 ? "#111827" : "#ffffff";
+}
+
+function abbreviateCat(name: string): string {
+  const first = name.split(" ")[0];
+  return first.length <= 6 ? first.toUpperCase() : first.slice(0, 6).toUpperCase();
+}
+
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -213,6 +226,8 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
                 const k = key(d, hour);
                 const isSelected = selected.has(k);
 
+                const pillText = getPillTextColor(catColor ?? "#334155");
+
                 return (
                   <div
                     key={`${d}-${hour}`}
@@ -226,60 +241,62 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
                     onTouchEnd={() => handleTouchEnd(d, hour)}
                     style={{
                       height: BLOCK_H,
-                      background: catColor
-                        ? `linear-gradient(135deg, ${catColor}55, ${catColor}33)`
-                        : "transparent",
+                      background: "transparent",
                       borderRight: d < 6 ? "1px solid var(--border-dim)" : "none",
                       borderBottom: "1px solid var(--border-dim)",
                       overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      padding: "2px 6px",
+                      padding: 2,
                     }}
                   >
-                    {/* Left accent stripe */}
-                    {catColor && (
+                    {catColor && catObj ? (
+                      /* Filled cell — pill badge style */
                       <div style={{
-                        position: "absolute",
-                        left: 0, top: 0, bottom: 0,
-                        width: 2,
-                        background: catColor,
-                        opacity: 0.9,
-                      }} />
-                    )}
-                    {catObj && (
-                      <div style={{
-                        fontSize: 9,
-                        fontWeight: 700,
-                        color: catColor ?? "var(--muted)",
-                        fontFamily: "Inter, sans-serif",
-                        letterSpacing: "0.03em",
-                        lineHeight: 1.2,
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 4,
+                        background: `${catColor}14`,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        padding: "0 4px",
                         overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        textTransform: "uppercase",
-                        paddingLeft: catColor ? 4 : 0,
-                        opacity: 0.95,
                       }}>
-                        {catObj.name}
+                        {/* Pill */}
+                        <div style={{
+                          flexShrink: 0,
+                          background: catColor,
+                          color: pillText,
+                          borderRadius: 99,
+                          padding: "1px 5px",
+                          fontSize: 8,
+                          fontWeight: 700,
+                          fontFamily: "Inter, sans-serif",
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                          lineHeight: 1.4,
+                        }}>
+                          {abbreviateCat(catObj.name)}
+                        </div>
+                        {/* Title */}
+                        {entry?.title && (
+                          <div style={{
+                            fontSize: 9,
+                            fontFamily: "Inter, sans-serif",
+                            color: "rgba(240,244,255,0.7)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            lineHeight: 1.3,
+                            fontWeight: 500,
+                          }}>
+                            {entry.title}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {entry?.title && (
-                      <div style={{
-                        fontSize: 9,
-                        color: "rgba(238,238,255,0.65)",
-                        fontFamily: "Inter, sans-serif",
-                        lineHeight: 1.2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        paddingLeft: catColor ? 4 : 0,
-                        marginTop: 1,
-                      }}>
-                        {entry.title}
-                      </div>
+                    ) : (
+                      /* Empty cell */
+                      <div style={{ width: "100%", height: "100%", borderRadius: 4 }} />
                     )}
                   </div>
                 );
