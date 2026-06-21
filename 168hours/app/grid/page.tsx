@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import WeeklyGrid from "@/components/WeeklyGrid";
 import CategoryLegend from "@/components/CategoryLegend";
 import { exportToPDF } from "@/lib/pdfExport";
+import { FileText, FileJson, BarChart2 } from "lucide-react";
 
 export default function GridPage() {
   const router = useRouter();
@@ -192,7 +193,7 @@ export default function GridPage() {
                     onMouseEnter={e => { e.currentTarget.style.background = "var(--surface2)"; e.currentTarget.style.color = "var(--accent2)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-dim)"; }}
                   >
-                    <span style={{ fontSize: 14 }}>{fmt === "csv" ? "📊" : fmt === "json" ? "{ }" : "📄"}</span>
+                    <span style={{ display:"flex", alignItems:"center" }}>{fmt === "csv" ? <BarChart2 size={14} /> : fmt === "json" ? <FileJson size={14} /> : <FileText size={14} />}</span>
                     Export as .{fmt.toUpperCase()}
                   </button>
                 ))}

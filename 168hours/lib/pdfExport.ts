@@ -3,31 +3,66 @@ import { getWeekLabel } from "./utils";
 
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
+function hexToRgb(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return [r, g, b];
+}
+
+function getLuminance(r: number, g: number, b: number): number {
+  return 0.299 * (r / 255) + 0.587 * (g / 255) + 0.114 * (b / 255);
+}
+
 export async function exportToPDF(weekId: string, entries: HourEntry[], categories: Category[]): Promise<void> {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
+  const BG: [number,number,number] = [15, 17, 23];
+  const SURFACE: [number,number,number] = [22, 27, 39];
+  const SURFACE2: [number,number,number] = [30, 38, 55];
+  const HEADER_BG: [number,number,number] = [18, 14, 38];
+  const TEXT_BRIGHT: [number,number,number] = [240, 244, 255];
+  const TEXT_DIM: [number,number,number] = [120, 130, 160];
+  const ACCENT: [number,number,number] = [167, 139, 250];
+  const HOUR_COL_BG: [number,number,number] = [18, 22, 35];
+
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(...BG);
+  doc.rect(0, 0, pageW, pageH, "F");
+
+  doc.setFillColor(...HEADER_BG);
+  doc.rect(0, 0, pageW, 28, "F");
+
+  doc.setFontSize(16);
+  doc.setTextColor(...ACCENT);
+  doc.setFont("helvetica", "bold");
+  doc.text("168 Hours", 14, 11);
+
+  doc.setFontSize(10);
+  doc.setTextColor(...TEXT_BRIGHT);
+  doc.setFont("helvetica", "normal");
+  doc.text("Weekly Time Tracker", 14, 18);
+
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_DIM);
+  doc.text(getWeekLabel(weekId), pageW - 14, 11, { align: "right" });
+
+  const logged = entries.filter(e => e.category).length;
+  const pct = Math.round((logged / 168) * 100);
+  doc.text(`${logged}/168 hours logged · ${pct}%`, pageW - 14, 18, { align: "right" });
+
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(0.4);
+  doc.line(14, 26, pageW - 14, 26);
+
   const getCatName = (id: string) => categories.find(c => c.id === id)?.name ?? id;
-  const getCatColor = (id: string) => {
-    const hex = categories.find(c => c.id === id)?.color ?? "#334155";
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return [r, g, b] as [number, number, number];
-  };
+  const getCatHex = (id: string) => categories.find(c => c.id === id)?.color ?? "#334155";
 
-  // Title
-  doc.setFontSize(18);
-  doc.setTextColor(30, 30, 60);
-  doc.text("168 Hours — Weekly Tracker", 14, 16);
-
-  doc.setFontSize(11);
-  doc.setTextColor(100, 100, 140);
-  doc.text(getWeekLabel(weekId), 14, 24);
-
-  // Build table data: 24 rows × 7 days
   const tableData: string[][] = [];
   for (let hour = 0; hour < 24; hour++) {
     const row: string[] = [`${String(hour).padStart(2,"0")}:00`];
@@ -43,44 +78,70 @@ export async function exportToPDF(weekId: string, entries: HourEntry[], categori
     head: [["Hour", ...DAYS]],
     body: tableData,
     styles: {
-      fontSize: 8,
-      cellPadding: 2,
+      fontSize: 7.5,
+      cellPadding: 2.5,
       overflow: "linebreak",
       minCellHeight: 8,
+      lineColor: [40, 50, 70],
+      lineWidth: 0.1,
     },
     headStyles: {
-      fillColor: [30, 20, 60],
-      textColor: [200, 180, 255],
+      fillColor: HEADER_BG,
+      textColor: ACCENT,
       fontStyle: "bold",
       halign: "center",
+      fontSize: 8,
+      cellPadding: 3,
     },
     columnStyles: {
-      0: { fillColor: [15, 15, 30], textColor: [150, 140, 200], fontStyle: "bold", halign: "center", cellWidth: 16 },
+      0: {
+        fillColor: HOUR_COL_BG,
+        textColor: TEXT_DIM,
+        fontStyle: "bold",
+        halign: "center",
+        cellWidth: 16,
+      },
     },
-    didDrawCell: (data: { section: string; column: { index: number }; row: { index: number }; cell: { styles: { fillColor: [number,number,number] | string; textColor: [number,number,number] | string } } }) => {
+    bodyStyles: {
+      fillColor: SURFACE,
+      textColor: TEXT_DIM,
+    },
+    alternateRowStyles: {
+      fillColor: SURFACE2,
+    },
+    didDrawCell: (data: {
+      section: string;
+      column: { index: number };
+      row: { index: number };
+      cell: { styles: { fillColor: [number,number,number]; textColor: [number,number,number] } };
+    }) => {
       if (data.section === "body" && data.column.index > 0) {
         const hour = data.row.index;
         const day = data.column.index - 1;
         const e = entries.find(e => e.day === day && e.hour === hour);
         if (e?.category) {
-          const [r, g, b] = getCatColor(e.category);
-          data.cell.styles.fillColor = [Math.min(255, r + 160), Math.min(255, g + 160), Math.min(255, b + 160)] as [number,number,number];
-          data.cell.styles.textColor = [r, g, b] as [number,number,number];
+          const hex = getCatHex(e.category);
+          const [r, g, b] = hexToRgb(hex);
+          const lum = getLuminance(r, g, b);
+          data.cell.styles.fillColor = [r, g, b];
+          data.cell.styles.textColor = lum > 0.45
+            ? [20, 20, 20]
+            : [255, 255, 255];
         }
       }
     },
-    alternateRowStyles: { fillColor: [245, 244, 252] },
     margin: { top: 30, left: 7, right: 7 },
   });
 
-  // Summary at bottom
   const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY ?? 180;
-  if (finalY < 190) {
-    doc.setFontSize(9);
-    doc.setTextColor(100, 90, 160);
-    const logged = entries.filter(e => e.category).length;
-    doc.text(`${logged} / 168 hours logged  ·  Generated by 168 Hours`, 14, finalY + 8);
-  }
+  doc.setFillColor(...HEADER_BG);
+  doc.rect(0, finalY + 4, pageW, 14, "F");
+
+  doc.setFontSize(8);
+  doc.setTextColor(...ACCENT);
+  doc.text(`${logged} / 168 hours logged`, 14, finalY + 13);
+  doc.setTextColor(...TEXT_DIM);
+  doc.text("Generated by 168 Hours", pageW - 14, finalY + 13, { align: "right" });
 
   doc.save(`168hours-${weekId}.pdf`);
 }
