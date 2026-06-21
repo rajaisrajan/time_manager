@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
-import { getWeekId, getWeekEntries, offsetWeekId, duplicatePreviousWeek, exportToCSV, exportToJSON, getCategories } from "@/lib/storage";
+import { getWeekId, getWeekEntries, offsetWeekId, duplicatePreviousWeek, exportToCSV, exportToJSON, getCategories, clearLocalStorage } from "@/lib/storage";
 import { getWeekLabel } from "@/lib/utils";
 import { HourEntry, Category } from "@/lib/types";
 import Navbar from "@/components/Navbar";
@@ -23,16 +23,20 @@ export default function GridPage() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace("/login"); return; }
+    clearLocalStorage();
     setMounted(true);
-    setCategories(getCategories());
-    setEntries(getWeekEntries(weekId));
+    (async () => {
+      const [cats, ents] = await Promise.all([getCategories(), getWeekEntries(getWeekId())]);
+      setCategories(cats);
+      setEntries(ents);
+    })();
   }, [router]);
 
   useEffect(() => {
-    if (mounted) setEntries(getWeekEntries(weekId));
+    if (!mounted) return;
+    getWeekEntries(weekId).then(setEntries);
   }, [weekId, mounted]);
 
-  // Close export dropdown on outside click
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
@@ -56,7 +60,7 @@ export default function GridPage() {
       finally { setPdfLoading(false); }
       return;
     }
-    const content = format === "csv" ? exportToCSV(weekId) : exportToJSON(weekId);
+    const content = format === "csv" ? exportToCSV(weekId, entries) : exportToJSON(weekId, entries);
     const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -66,8 +70,9 @@ export default function GridPage() {
     URL.revokeObjectURL(url);
   }
 
-  function handleDuplicate() {
-    setEntries(duplicatePreviousWeek(weekId));
+  async function handleDuplicate() {
+    const newEntries = await duplicatePreviousWeek(weekId);
+    setEntries(newEntries);
   }
 
   const toolbarBtnStyle: React.CSSProperties = {

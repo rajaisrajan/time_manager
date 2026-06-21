@@ -4,6 +4,7 @@ import { HourEntry, Category } from "@/lib/types";
 import { getCategoryColor, getCategoryById } from "@/lib/categories";
 import { formatHour24 } from "@/lib/utils";
 import { setEntries, setEntry, clearEntry, getEntryAt } from "@/lib/storage";
+// storage fns are now async — callers pass currentEntries
 import EditPanel from "./EditPanel";
 
 function getPillTextColor(hex: string): string {
@@ -131,24 +132,24 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
   }
 
   /* ---- Save / clear ---- */
-  function handleSave(data: Partial<HourEntry>) {
+  async function handleSave(data: Partial<HourEntry>) {
     if (selected.size > 1 || !editTarget) {
       const slots = Array.from(selected).map(k => {
         const [d, h] = k.split("-").map(Number);
         return { day: d, hour: h };
       });
-      onEntriesChange(setEntries(weekId, slots, data));
+      onEntriesChange(await setEntries(weekId, slots, data, entries));
     } else {
-      onEntriesChange(setEntry(weekId, editTarget.day, editTarget.hour, data));
+      onEntriesChange(await setEntry(weekId, editTarget.day, editTarget.hour, data, entries));
     }
     setShowPanel(false);
     setSelected(new Set());
     setEditTarget(null);
   }
 
-  function handleClear() {
+  async function handleClear() {
     if (!editTarget) return;
-    onEntriesChange(clearEntry(weekId, editTarget.day, editTarget.hour));
+    onEntriesChange(await clearEntry(weekId, editTarget.day, editTarget.hour, entries));
   }
 
   function handleClose() {

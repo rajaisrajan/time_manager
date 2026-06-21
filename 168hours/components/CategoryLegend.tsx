@@ -12,10 +12,11 @@ export default function CategoryLegend({ categories, onCategoriesChange }: Props
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!newName.trim()) return;
-    saveCustomCategory(newName.trim());
-    onCategoriesChange(getCategories());
+    await saveCustomCategory(newName.trim());
+    const cats = await getCategories();
+    onCategoriesChange(cats);
     setNewName("");
     setAdding(false);
   }

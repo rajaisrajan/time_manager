@@ -24,11 +24,11 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!isAuthenticated()) { router.replace("/login"); return; }
     setMounted(true);
-    setCategories(getCategories());
+    getCategories().then(setCategories);
   }, [router]);
 
   useEffect(() => {
-    if (mounted) setEntries(getWeekEntries(weekId));
+    if (mounted) getWeekEntries(weekId).then(setEntries);
   }, [weekId, mounted]);
 
   if (!mounted) return null;

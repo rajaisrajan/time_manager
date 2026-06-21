@@ -27,93 +27,106 @@ export function offsetWeekId(weekId: string, offset: number): string {
   return getWeekId(start);
 }
 
-export function getWeekEntries(weekId: string): HourEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(`168hours_week_${weekId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveWeekEntries(weekId: string, entries: HourEntry[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(`168hours_week_${weekId}`, JSON.stringify(entries));
-}
-
-export function setEntry(weekId: string, day: number, hour: number, data: Partial<HourEntry>): HourEntry[] {
-  const entries = getWeekEntries(weekId);
-  const idx = entries.findIndex((e) => e.day === day && e.hour === hour);
-  if (idx >= 0) {
-    entries[idx] = { ...entries[idx], ...data };
-  } else {
-    entries.push({ weekId, day, hour, category: "", title: "", ...data });
-  }
-  saveWeekEntries(weekId, entries);
-  return entries;
-}
-
-export function setEntries(weekId: string, slots: { day: number; hour: number }[], data: Partial<HourEntry>): HourEntry[] {
-  let entries = getWeekEntries(weekId);
-  for (const slot of slots) {
-    const idx = entries.findIndex((e) => e.day === slot.day && e.hour === slot.hour);
-    if (idx >= 0) {
-      entries[idx] = { ...entries[idx], ...data };
-    } else {
-      entries.push({ weekId, day: slot.day, hour: slot.hour, category: "", title: "", ...data });
-    }
-  }
-  saveWeekEntries(weekId, entries);
-  return entries;
-}
-
-export function clearEntry(weekId: string, day: number, hour: number): HourEntry[] {
-  const entries = getWeekEntries(weekId).filter((e) => !(e.day === day && e.hour === hour));
-  saveWeekEntries(weekId, entries);
-  return entries;
-}
-
 export function getEntryAt(entries: HourEntry[], day: number, hour: number): HourEntry | undefined {
   return entries.find((e) => e.day === day && e.hour === hour);
 }
 
-export function getCategories(): Category[] {
-  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
+function mapRow(row: Record<string, unknown>): HourEntry {
+  return {
+    weekId: row.week_id as string,
+    day: row.day as number,
+    hour: row.hour as number,
+    category: row.category as string,
+    title: row.title as string,
+    notes: row.notes as string | undefined,
+  };
+}
+
+export async function getWeekEntries(weekId: string): Promise<HourEntry[]> {
+  const res = await fetch(`/api/entries?weekId=${encodeURIComponent(weekId)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data as Record<string, unknown>[]).map(mapRow);
+}
+
+export async function saveWeekEntries(weekId: string, entries: HourEntry[]): Promise<void> {
+  await fetch("/api/entries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ weekId, entries }),
+  });
+}
+
+export async function setEntry(weekId: string, day: number, hour: number, data: Partial<HourEntry>, currentEntries: HourEntry[]): Promise<HourEntry[]> {
+  const idx = currentEntries.findIndex((e) => e.day === day && e.hour === hour);
+  let updated: HourEntry[];
+  if (idx >= 0) {
+    updated = currentEntries.map((e, i) => i === idx ? { ...e, ...data } : e);
+  } else {
+    updated = [...currentEntries, { weekId, day, hour, category: "", title: "", ...data }];
+  }
+  await saveWeekEntries(weekId, updated);
+  return updated;
+}
+
+export async function setEntries(weekId: string, slots: { day: number; hour: number }[], data: Partial<HourEntry>, currentEntries: HourEntry[]): Promise<HourEntry[]> {
+  let updated = [...currentEntries];
+  for (const slot of slots) {
+    const idx = updated.findIndex((e) => e.day === slot.day && e.hour === slot.hour);
+    if (idx >= 0) {
+      updated[idx] = { ...updated[idx], ...data };
+    } else {
+      updated.push({ weekId, day: slot.day, hour: slot.hour, category: "", title: "", ...data });
+    }
+  }
+  await saveWeekEntries(weekId, updated);
+  return updated;
+}
+
+export async function clearEntry(weekId: string, day: number, hour: number, currentEntries: HourEntry[]): Promise<HourEntry[]> {
+  const updated = currentEntries.filter((e) => !(e.day === day && e.hour === hour));
+  await saveWeekEntries(weekId, updated);
+  return updated;
+}
+
+export async function getCategories(): Promise<Category[]> {
   try {
-    const raw = localStorage.getItem("168hours_categories");
-    const custom: Category[] = raw ? JSON.parse(raw) : [];
-    return [...DEFAULT_CATEGORIES, ...custom];
+    const res = await fetch("/api/categories");
+    if (!res.ok) return DEFAULT_CATEGORIES;
+    const custom = await res.json() as Array<{ id: string; name: string; color: string }>;
+    const customCats: Category[] = custom.map(c => ({ id: c.id, name: c.name, color: c.color, isDefault: false }));
+    return [...DEFAULT_CATEGORIES, ...customCats];
   } catch {
     return DEFAULT_CATEGORIES;
   }
 }
 
-export function saveCustomCategory(name: string): Category {
-  if (typeof window === "undefined") throw new Error("No window");
-  const raw = localStorage.getItem("168hours_custom_categories");
-  const customs: Category[] = raw ? JSON.parse(raw) : [];
+export async function saveCustomCategory(name: string): Promise<Category> {
+  const res = await fetch("/api/categories");
+  const existing = res.ok ? await res.json() as unknown[] : [];
   const newCat: Category = {
     id: `custom_${Date.now()}`,
     name,
-    color: generateColor(customs.length),
+    color: generateColor(existing.length),
     isDefault: false,
   };
-  customs.push(newCat);
-  localStorage.setItem("168hours_custom_categories", JSON.stringify(customs));
+  await fetch("/api/categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(newCat),
+  });
   return newCat;
 }
 
-export function duplicatePreviousWeek(weekId: string): HourEntry[] {
+export async function duplicatePreviousWeek(weekId: string): Promise<HourEntry[]> {
   const prev = offsetWeekId(weekId, -1);
-  const prevEntries = getWeekEntries(prev);
+  const prevEntries = await getWeekEntries(prev);
   const newEntries = prevEntries.map((e) => ({ ...e, weekId }));
-  saveWeekEntries(weekId, newEntries);
+  await saveWeekEntries(weekId, newEntries);
   return newEntries;
 }
 
-export function exportToCSV(weekId: string): string {
-  const entries = getWeekEntries(weekId);
+export function exportToCSV(weekId: string, entries: HourEntry[]): string {
   const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const header = "Day,Hour,Category,Title,Notes";
   const rows = entries.map((e) =>
@@ -122,6 +135,16 @@ export function exportToCSV(weekId: string): string {
   return [header, ...rows].join("\n");
 }
 
-export function exportToJSON(weekId: string): string {
-  return JSON.stringify(getWeekEntries(weekId), null, 2);
+export function exportToJSON(_weekId: string, entries: HourEntry[]): string {
+  return JSON.stringify(entries, null, 2);
+}
+
+export function clearLocalStorage(): void {
+  if (typeof window === "undefined") return;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("168hours_")) keysToRemove.push(k);
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
 }
