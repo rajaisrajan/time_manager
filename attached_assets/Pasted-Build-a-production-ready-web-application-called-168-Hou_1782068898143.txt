@@ -1,0 +1,484 @@
+Build a production-ready web application called **168 Hours**.
+
+## Core Philosophy
+
+Every person has exactly 168 hours per week.
+
+This application is designed for personal use to understand where every hour of the week goes.
+
+The goal is not task management.
+
+The goal is weekly life analysis, visualization, awareness, and improvement.
+
+Users should instantly see:
+
+* Where their time goes
+* How much they sleep
+* How much they work
+* How much they learn
+* How much time is wasted
+* Weekly patterns
+* Long-term trends
+
+The design should feel like a premium productivity product.
+
+---
+
+# Tech Stack
+
+Frontend:
+
+* Next.js 15
+* React
+* TypeScript
+* Tailwind CSS
+* shadcn/ui
+* Framer Motion
+
+Backend:
+
+* Supabase
+
+Deployment:
+
+* Vercel
+
+---
+
+# Authentication
+
+Keep authentication extremely simple.
+
+This is a personal-use application.
+
+Create:
+
+* Single fixed password login
+* Password stored securely
+* No signup
+* No user management
+* One owner only
+
+After login, user directly enters dashboard.
+
+---
+
+# Main Screen
+
+Create a full weekly grid.
+
+Columns:
+
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+Sunday
+
+Rows:
+
+00:00 to 23:00
+
+Total = 168 blocks
+
+Every block represents exactly one hour.
+
+---
+
+# Hour Block Design
+
+Every block should display:
+
+* Category color
+* Small category label
+* Short text summary
+
+Example:
+
+Sleep
+"Night Sleep"
+
+Learning
+"AI Course"
+
+Work
+"Client Meeting"
+
+Family
+"Dinner"
+
+The text should auto-truncate if too long.
+
+---
+
+# Editing Experience
+
+When a block is clicked:
+
+Open a side panel (desktop)
+
+Open a bottom drawer (mobile)
+
+Fields:
+
+* Category
+* Short Title
+* Notes
+
+Save instantly.
+
+---
+
+# Drag To Fill
+
+This is a critical feature.
+
+User should be able to:
+
+Click and drag across multiple hours.
+
+Example:
+
+23:00 → 07:00
+
+Choose:
+
+Category = Sleep
+
+Title = Sleep
+
+The selected blocks are automatically filled.
+
+This should work on desktop and mobile.
+
+---
+
+# Categories
+
+Default categories:
+
+Sleep
+Work
+Learning
+Self Improvement
+Family
+Entertainment
+Daily Activities
+
+Examples of Daily Activities:
+
+* Eating
+* Bathing
+* Getting Ready
+* Cleaning
+* Shopping
+
+User can also create unlimited custom categories.
+
+---
+
+# Psychology-Based Color System
+
+Use colors that psychologically match behavior.
+
+Sleep:
+Deep Blue
+
+Work:
+Red
+
+Learning:
+Purple
+
+Self Improvement:
+Green
+
+Family:
+Warm Orange
+
+Entertainment:
+Yellow
+
+Daily Activities:
+Gray
+
+Custom Categories:
+Automatically generated colors
+
+Unused Hours:
+Light Neutral
+
+Wasted Time:
+Very Dark Gray / Black
+
+Create a beautiful legend.
+
+---
+
+# Dashboard Analytics
+
+This is one of the most important sections.
+
+Create a separate analytics page.
+
+Show:
+
+## Weekly Summary
+
+Total Hours Logged
+
+Total Unlogged Hours
+
+Sleep Hours
+
+Work Hours
+
+Learning Hours
+
+Self Improvement Hours
+
+Entertainment Hours
+
+Family Hours
+
+Daily Activities Hours
+
+---
+
+## Percent Distribution
+
+Pie Chart
+
+Show percentage of 168 hours.
+
+Example:
+
+Sleep = 33%
+
+Work = 24%
+
+Learning = 8%
+
+etc.
+
+---
+
+## Daily Breakdown
+
+Bar chart showing:
+
+Monday = 24h
+
+Tuesday = 24h
+
+etc.
+
+Broken into category colors.
+
+---
+
+## Productivity Score
+
+Create a score from 0–100.
+
+Formula:
+
+Positive:
+
+Learning
+Work
+Self Improvement
+
+Negative:
+
+Wasted Time
+
+Display:
+
+Weekly Productivity Score
+
+---
+
+## Time Waste Analysis
+
+Show:
+
+Total wasted hours
+
+Percentage wasted
+
+Worst day
+
+Worst time period
+
+---
+
+## Sleep Analysis
+
+Show:
+
+Average sleep duration
+
+Sleep consistency
+
+Sleep percentage of week
+
+---
+
+## Peak Performance Analysis
+
+Determine:
+
+Most productive day
+
+Most productive hour range
+
+Most productive block of the week
+
+Example:
+
+"Tuesday 8 AM – 12 PM was your most productive period."
+
+---
+
+## Weekly Insights
+
+Generate automatic insights.
+
+Examples:
+
+"You spent 58 hours sleeping."
+
+"Work consumed 27% of your week."
+
+"You learned for 12 hours this week."
+
+"Friday had the highest entertainment time."
+
+"Most productivity occurred between 9 AM and 1 PM."
+
+---
+
+# Visualization Features
+
+Create a beautiful heatmap.
+
+X Axis:
+
+Days
+
+Y Axis:
+
+Hours
+
+Color intensity based on productivity.
+
+Inspired by GitHub contribution heatmaps.
+
+This should immediately reveal patterns.
+
+---
+
+# Mobile Experience
+
+Mobile experience must be exceptional.
+
+Requirements:
+
+* Fully responsive
+* Touch-friendly
+* Sticky day headers
+* Sticky hour labels
+* Smooth horizontal scrolling
+* Drag-to-fill support
+* Fast editing
+
+The app should feel native on mobile.
+
+---
+
+# Database Design
+
+Supabase Tables
+
+weekly_entries
+
+id
+week_id
+day
+hour
+category
+title
+notes
+created_at
+updated_at
+
+custom_categories
+
+id
+name
+color
+created_at
+
+settings
+
+id
+password_hash
+created_at
+
+---
+
+# Extra Features
+
+Export weekly data to:
+
+* CSV
+* JSON
+
+Duplicate previous week
+
+Quick Fill
+
+Example:
+
+Fill Sleep:
+23:00–07:00
+All Week
+
+One click fills all sleep blocks.
+
+Templates:
+
+Student Template
+
+Working Professional Template
+
+Custom Template
+
+---
+
+# UI Style
+
+Use a premium modern aesthetic.
+
+Inspiration:
+
+* Linear
+* Notion
+* Arc Browser
+* Stripe Dashboard
+
+Requirements:
+
+* Beautiful spacing
+* Modern cards
+* Smooth animations
+* Dark mode first
+* Excellent typography
+* Professional appearance
+
+The final result should feel like a paid SaaS product rather than a simple tracker.
+
+Focus heavily on usability, speed, visual clarity, and weekly life analytics.
