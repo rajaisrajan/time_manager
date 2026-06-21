@@ -22,30 +22,42 @@ export default function CategoryLegend({ categories, onCategoriesChange }: Props
 
   return (
     <div style={{
-      padding: "14px 16px",
+      padding: "10px 16px",
       background: "var(--surface)",
       borderTop: "1px solid var(--border)",
       display: "flex",
       flexWrap: "wrap",
-      gap: 8,
+      gap: 6,
       alignItems: "center",
+      minHeight: 44,
     }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 4 }}>
-        Legend
-      </span>
+      <span style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: "var(--muted)",
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        marginRight: 4,
+        flexShrink: 0,
+        fontFamily: "Inter, sans-serif",
+      }}>Legend</span>
+
       {categories.map(cat => (
         <div key={cat.id} style={{
           display: "flex",
           alignItems: "center",
           gap: 5,
           padding: "3px 8px",
-          borderRadius: 6,
-          background: "var(--surface2)",
-          border: "1px solid var(--border)",
-          fontSize: 12,
-          color: "var(--text)",
+          borderRadius: 5,
+          background: `${cat.color}15`,
+          border: `1px solid ${cat.color}40`,
+          fontSize: 11,
+          fontWeight: 600,
+          color: cat.color,
+          fontFamily: "Inter, sans-serif",
+          flexShrink: 0,
         }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />
+          <div style={{ width: 6, height: 6, borderRadius: 1, background: cat.color, flexShrink: 0 }} />
           {cat.name}
         </div>
       ))}
@@ -67,44 +79,40 @@ export default function CategoryLegend({ categories, onCategoriesChange }: Props
               fontSize: 12,
               outline: "none",
               width: 140,
+              fontFamily: "Inter, sans-serif",
+              boxShadow: "0 0 0 3px var(--accent-glow)",
             }}
           />
-          <button onClick={handleAdd} style={{
-            padding: "4px 10px",
-            background: "var(--accent)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            fontSize: 12,
-            cursor: "pointer",
-            fontWeight: 600,
-          }}>Add</button>
-          <button onClick={() => setAdding(false)} style={{
-            padding: "4px 8px",
-            background: "transparent",
-            color: "var(--muted)",
-            border: "none",
-            fontSize: 12,
-            cursor: "pointer",
-          }}>✕</button>
+          <button onClick={handleAdd} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Add</button>
+          <button onClick={() => setAdding(false)} style={{ padding: "4px 8px", background: "transparent", color: "var(--muted)", border: "none", fontSize: 13, cursor: "pointer" }}>✕</button>
         </div>
       ) : (
-        <button onClick={() => setAdding(true)} style={{
-          padding: "3px 10px",
-          background: "transparent",
-          border: "1px dashed var(--border)",
-          borderRadius: 6,
-          color: "var(--muted)",
-          fontSize: 12,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          transition: "all 0.15s",
-        }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent2)"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
-        >+ Add Category</button>
+        <button
+          onClick={() => setAdding(true)}
+          style={{
+            padding: "3px 10px",
+            background: "transparent",
+            border: "1px dashed var(--border)",
+            borderRadius: 5,
+            color: "var(--muted)",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            transition: "all 0.15s",
+            fontFamily: "Inter, sans-serif",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = "var(--accent)";
+            e.currentTarget.style.color = "var(--accent2)";
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = "var(--border)";
+            e.currentTarget.style.color = "var(--muted)";
+          }}
+        >+ Category</button>
       )}
     </div>
   );

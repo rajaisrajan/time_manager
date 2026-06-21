@@ -12,7 +12,7 @@ export default function Navbar() {
   }
 
   const navItems = [
-    { href: "/grid", label: "Weekly Grid", icon: "⊞" },
+    { href: "/grid", label: "Grid", icon: "⊞" },
     { href: "/analytics", label: "Analytics", icon: "◈" },
   ];
 
@@ -21,86 +21,91 @@ export default function Navbar() {
       position: "sticky",
       top: 0,
       zIndex: 100,
-      background: "rgba(11,18,33,0.92)",
-      backdropFilter: "blur(12px)",
+      background: "rgba(8,8,15,0.9)",
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
       borderBottom: "1px solid var(--border)",
-      padding: "0 24px",
+      padding: "0 20px",
       display: "flex",
       alignItems: "center",
-      height: 56,
-      gap: 8,
+      height: 52,
+      gap: 6,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginRight: 24 }}>
+      {/* Logo */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginRight: 20 }}>
         <div style={{
-          width: 30,
-          height: 30,
-          background: "linear-gradient(135deg, #1d4ed8, #3b82f6)",
+          width: 28,
+          height: 28,
+          background: "linear-gradient(135deg, #7c3aed, #a78bfa)",
           borderRadius: 8,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 14,
-          fontWeight: 700,
+          fontSize: 13,
+          fontWeight: 800,
           color: "#fff",
           flexShrink: 0,
+          boxShadow: "0 0 12px rgba(139,92,246,0.4)",
         }}>⧖</div>
-        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text)", letterSpacing: "-0.3px" }}>
-          168 Hours
-        </span>
+        <span style={{
+          fontWeight: 800,
+          fontSize: 14,
+          color: "var(--text)",
+          letterSpacing: "-0.4px",
+          background: "linear-gradient(135deg, var(--text), var(--accent2))",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+        }}>168 Hours</span>
       </div>
 
-      <div style={{ display: "flex", gap: 4, flex: 1 }}>
-        {navItems.map(item => (
-          <button
-            key={item.href}
-            onClick={() => router.push(item.href)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 8,
-              border: "none",
-              background: path === item.href ? "var(--surface2)" : "transparent",
-              color: path === item.href ? "var(--text)" : "var(--muted)",
-              fontSize: 13,
-              fontWeight: path === item.href ? 600 : 400,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={e => {
-              if (path !== item.href) (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
-            }}
-            onMouseLeave={e => {
-              if (path !== item.href) (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
-            }}
-          >
-            <span>{item.icon}</span>
-            {item.label}
-          </button>
-        ))}
+      {/* Nav items */}
+      <div style={{ display: "flex", gap: 2, flex: 1 }}>
+        {navItems.map(item => {
+          const active = path === item.href;
+          return (
+            <button
+              key={item.href}
+              onClick={() => router.push(item.href)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 8,
+                border: active ? "1px solid var(--border)" : "1px solid transparent",
+                background: active ? "var(--surface2)" : "transparent",
+                color: active ? "var(--accent2)" : "var(--muted)",
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.15s",
+                fontFamily: "Inter, sans-serif",
+              }}
+              onMouseEnter={e => {
+                if (!active) {
+                  e.currentTarget.style.color = "var(--text)";
+                  e.currentTarget.style.background = "var(--surface2)";
+                }
+              }}
+              onMouseLeave={e => {
+                if (!active) {
+                  e.currentTarget.style.color = "var(--muted)";
+                  e.currentTarget.style.background = "transparent";
+                }
+              }}
+            >
+              <span style={{ fontSize: 12 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          );
+        })}
       </div>
 
+      {/* Sign out */}
       <button
         onClick={handleLogout}
-        style={{
-          padding: "6px 14px",
-          borderRadius: 8,
-          border: "1px solid var(--border)",
-          background: "transparent",
-          color: "var(--muted)",
-          fontSize: 13,
-          cursor: "pointer",
-          transition: "all 0.15s",
-        }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
-          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border2)";
-        }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
-          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-        }}
+        className="btn btn-ghost"
+        style={{ fontSize: 12, padding: "5px 12px" }}
       >
         Sign Out
       </button>

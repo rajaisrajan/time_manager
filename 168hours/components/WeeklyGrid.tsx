@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { HourEntry, Category } from "@/lib/types";
 import { getCategoryColor, getCategoryById } from "@/lib/categories";
 import { formatHour24 } from "@/lib/utils";
@@ -22,8 +22,8 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: number; hour: number } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [bulkPanel, setBulkPanel] = useState(false);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const [showPanel, setShowPanel] = useState(false);
+  const didDragRef = useRef(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -38,219 +38,245 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
     return getEntryAt(entries, day, hour);
   }, [entries]);
 
+  /* ---- Mouse drag (desktop) ---- */
   function handleMouseDown(day: number, hour: number, e: React.MouseEvent) {
     e.preventDefault();
+    didDragRef.current = false;
     setIsDragging(true);
     setDragStart({ day, hour });
-    const k = key(day, hour);
-    setSelected(new Set([k]));
+    setSelected(new Set([key(day, hour)]));
+    setShowPanel(false);
   }
 
   function handleMouseEnter(day: number, hour: number) {
     if (!isDragging || !dragStart) return;
+    didDragRef.current = true;
     const minDay = Math.min(dragStart.day, day);
     const maxDay = Math.max(dragStart.day, day);
     const minHour = Math.min(dragStart.hour, hour);
     const maxHour = Math.max(dragStart.hour, hour);
-    const newSelected = new Set<string>();
-    for (let d = minDay; d <= maxDay; d++) {
-      for (let h = minHour; h <= maxHour; h++) {
-        newSelected.add(key(d, h));
-      }
-    }
-    setSelected(newSelected);
+    const s = new Set<string>();
+    for (let d = minDay; d <= maxDay; d++)
+      for (let h = minHour; h <= maxHour; h++) s.add(key(d, h));
+    setSelected(s);
   }
 
   function handleMouseUp(day: number, hour: number) {
+    if (!isDragging) return;
     setIsDragging(false);
-    if (selected.size <= 1) {
-      setEditTarget({ day, hour });
-      setBulkPanel(false);
-    } else {
-      setBulkPanel(true);
-      setEditTarget(null);
-    }
+    const isSingleClick = !didDragRef.current;
+    setEditTarget(isSingleClick ? { day, hour } : null);
+    setShowPanel(true);
+    didDragRef.current = false;
   }
 
   useEffect(() => {
-    function handleGlobalMouseUp() {
+    function onGlobalMouseUp() {
       if (isDragging) {
         setIsDragging(false);
-        if (selected.size > 1) {
-          setBulkPanel(true);
-          setEditTarget(null);
-        }
+        if (selected.size > 1) { setEditTarget(null); setShowPanel(true); }
+        didDragRef.current = false;
       }
     }
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+    window.addEventListener("mouseup", onGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", onGlobalMouseUp);
   }, [isDragging, selected]);
 
-  function handleSingle(data: Partial<HourEntry>) {
-    if (!editTarget) return;
-    const newEntries = setEntry(weekId, editTarget.day, editTarget.hour, data);
-    onEntriesChange(newEntries);
-    setEditTarget(null);
-    setSelected(new Set());
+  /* ---- Touch drag (mobile) ---- */
+  const touchStartRef = useRef<{ day: number; hour: number } | null>(null);
+
+  function handleTouchStart(day: number, hour: number) {
+    touchStartRef.current = { day, hour };
+    setSelected(new Set([key(day, hour)]));
+    setIsDragging(true);
+    didDragRef.current = false;
   }
 
-  function handleBulkSave(data: Partial<HourEntry>) {
-    const slots = Array.from(selected).map(k => {
-      const [d, h] = k.split("-").map(Number);
-      return { day: d, hour: h };
-    });
-    const newEntries = setEntries(weekId, slots, data);
-    onEntriesChange(newEntries);
-    setBulkPanel(false);
+  function handleTouchMove(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!el) return;
+    const d = parseInt(el.getAttribute("data-day") ?? "-1");
+    const h = parseInt(el.getAttribute("data-hour") ?? "-1");
+    if (d < 0 || h < 0 || !touchStartRef.current) return;
+    didDragRef.current = true;
+    const { day: sd, hour: sh } = touchStartRef.current;
+    const minDay = Math.min(sd, d), maxDay = Math.max(sd, d);
+    const minHour = Math.min(sh, h), maxHour = Math.max(sh, h);
+    const s = new Set<string>();
+    for (let dd = minDay; dd <= maxDay; dd++)
+      for (let hh = minHour; hh <= maxHour; hh++) s.add(key(dd, hh));
+    setSelected(s);
+  }
+
+  function handleTouchEnd(day: number, hour: number) {
+    setIsDragging(false);
+    const isSingleTap = !didDragRef.current;
+    setEditTarget(isSingleTap ? { day, hour } : null);
+    setShowPanel(true);
+    didDragRef.current = false;
+  }
+
+  /* ---- Save / clear ---- */
+  function handleSave(data: Partial<HourEntry>) {
+    if (selected.size > 1 || !editTarget) {
+      const slots = Array.from(selected).map(k => {
+        const [d, h] = k.split("-").map(Number);
+        return { day: d, hour: h };
+      });
+      onEntriesChange(setEntries(weekId, slots, data));
+    } else {
+      onEntriesChange(setEntry(weekId, editTarget.day, editTarget.hour, data));
+    }
+    setShowPanel(false);
     setSelected(new Set());
+    setEditTarget(null);
   }
 
   function handleClear() {
     if (!editTarget) return;
-    const newEntries = clearEntry(weekId, editTarget.day, editTarget.hour);
-    onEntriesChange(newEntries);
+    onEntriesChange(clearEntry(weekId, editTarget.day, editTarget.hour));
   }
 
-  const showPanel = editTarget !== null || bulkPanel;
+  function handleClose() {
+    setShowPanel(false);
+    setSelected(new Set());
+    setEditTarget(null);
+  }
+
+  const panelEntry = editTarget ? getEntry(editTarget.day, editTarget.hour) || null : null;
+  const bulkCount = selected.size > 1 ? selected.size : undefined;
+
+  const BLOCK_H = isMobile ? 34 : 40;
+  const LABEL_W = isMobile ? 42 : 50;
+  const COL_MIN = isMobile ? 80 : 108;
 
   return (
-    <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+    <div style={{ position: "relative", flex: 1, display: "flex", overflow: "hidden" }}>
+      {/* Scrollable grid */}
       <div
-        ref={gridRef}
         style={{
+          flex: 1,
           overflowX: "auto",
           overflowY: "auto",
-          height: "100%",
-          WebkitOverflowScrolling: "touch",
+          WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
         }}
         onMouseLeave={() => { if (isDragging) setIsDragging(false); }}
+        onTouchMove={handleTouchMove}
       >
         <div style={{
           display: "grid",
-          gridTemplateColumns: `52px repeat(7, minmax(${isMobile ? 88 : 110}px, 1fr))`,
-          minWidth: isMobile ? 672 : 822,
+          gridTemplateColumns: `${LABEL_W}px repeat(7, minmax(${COL_MIN}px, 1fr))`,
+          minWidth: LABEL_W + COL_MIN * 7,
         }}>
-          {/* Header row */}
-          <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--bg)", borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)" }} />
+          {/* Sticky header row */}
+          <div style={headerCell(LABEL_W)} />
           {DAYS.map((day, d) => (
-            <div
-              key={day}
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 20,
-                background: "var(--surface)",
-                borderBottom: "1px solid var(--border)",
-                borderRight: d < 6 ? "1px solid var(--border)" : "none",
-                padding: "8px 4px",
-                textAlign: "center",
-                fontSize: 12,
-                fontWeight: 700,
-                color: d >= 5 ? "var(--accent2)" : "var(--text)",
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              {day}
-            </div>
+            <div key={day} style={{
+              ...headerCell(0),
+              color: d >= 5 ? "var(--accent2)" : "var(--text-dim)",
+              borderRight: d < 6 ? "1px solid var(--border)" : "none",
+            }}>{day}</div>
           ))}
 
           {/* Hour rows */}
           {HOURS.map(hour => (
-            <>
-              <div
-                key={`label-${hour}`}
-                style={{
-                  position: "sticky",
-                  left: 0,
-                  zIndex: 10,
-                  background: "var(--bg)",
-                  borderRight: "1px solid var(--border)",
-                  borderBottom: "1px solid var(--border)20",
-                  padding: "0 6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  height: isMobile ? 36 : 42,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: "var(--muted)",
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                }}
-              >
+            <React.Fragment key={hour}>
+              {/* Hour label */}
+              <div style={{
+                position: "sticky",
+                left: 0,
+                zIndex: 5,
+                background: "var(--bg)",
+                height: BLOCK_H,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                paddingRight: 8,
+                fontSize: 10,
+                fontWeight: 700,
+                fontFamily: "Inter, sans-serif",
+                color: "var(--muted)",
+                borderRight: "1px solid var(--border)",
+                borderBottom: "1px solid var(--border-dim)",
+                flexShrink: 0,
+                letterSpacing: "0.03em",
+              }}>
                 {formatHour24(hour)}
               </div>
+
+              {/* Day cells */}
               {DAYS.map((_, d) => {
                 const entry = getEntry(d, hour);
                 const catColor = entry?.category ? getCategoryColor(categories, entry.category) : null;
                 const catObj = entry?.category ? getCategoryById(categories, entry.category) : null;
                 const k = key(d, hour);
                 const isSelected = selected.has(k);
-                const isDrag = isDragging && isSelected;
 
                 return (
                   <div
                     key={`${d}-${hour}`}
-                    className={`hour-block${isSelected ? " selected" : ""}${isDrag ? " dragging" : ""}`}
+                    data-day={d}
+                    data-hour={hour}
+                    className={`hour-block${isSelected ? " selected" : ""}`}
                     onMouseDown={e => handleMouseDown(d, hour, e)}
                     onMouseEnter={() => handleMouseEnter(d, hour)}
                     onMouseUp={() => handleMouseUp(d, hour)}
-                    onClick={() => {
-                      if (!isDragging && selected.size <= 1) {
-                        setSelected(new Set([k]));
-                        setEditTarget({ day: d, hour });
-                        setBulkPanel(false);
-                      }
-                    }}
+                    onTouchStart={() => handleTouchStart(d, hour)}
+                    onTouchEnd={() => handleTouchEnd(d, hour)}
                     style={{
-                      height: isMobile ? 36 : 42,
-                      background: catColor ? `${catColor}cc` : "var(--surface2)12",
-                      borderRight: d < 6 ? "1px solid var(--border)20" : "none",
-                      borderBottom: "1px solid var(--border)18",
+                      height: BLOCK_H,
+                      background: catColor
+                        ? `linear-gradient(135deg, ${catColor}55, ${catColor}33)`
+                        : "transparent",
+                      borderRight: d < 6 ? "1px solid var(--border-dim)" : "none",
+                      borderBottom: "1px solid var(--border-dim)",
                       overflow: "hidden",
-                      padding: "2px 5px",
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "center",
-                      position: "relative",
+                      padding: "2px 6px",
                     }}
                   >
+                    {/* Left accent stripe */}
                     {catColor && (
                       <div style={{
                         position: "absolute",
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 3,
+                        left: 0, top: 0, bottom: 0,
+                        width: 2,
                         background: catColor,
-                        borderRadius: "0 1px 1px 0",
+                        opacity: 0.9,
                       }} />
                     )}
                     {catObj && (
                       <div style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        color: catColor ? "#fff" : "var(--muted)",
-                        opacity: 0.9,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: catColor ?? "var(--muted)",
+                        fontFamily: "Inter, sans-serif",
+                        letterSpacing: "0.03em",
                         lineHeight: 1.2,
-                        paddingLeft: 4,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        textTransform: "uppercase",
+                        paddingLeft: catColor ? 4 : 0,
+                        opacity: 0.95,
                       }}>
                         {catObj.name}
                       </div>
                     )}
                     {entry?.title && (
                       <div style={{
-                        fontSize: 10,
-                        color: "rgba(255,255,255,0.7)",
+                        fontSize: 9,
+                        color: "rgba(238,238,255,0.65)",
+                        fontFamily: "Inter, sans-serif",
                         lineHeight: 1.2,
-                        paddingLeft: 4,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        paddingLeft: catColor ? 4 : 0,
+                        marginTop: 1,
                       }}>
                         {entry.title}
                       </div>
@@ -258,170 +284,44 @@ export default function WeeklyGrid({ weekId, entries, categories, onEntriesChang
                   </div>
                 );
               })}
-            </>
+            </React.Fragment>
           ))}
         </div>
       </div>
 
-      {/* Edit Panel */}
+      {/* Edit / Bulk panel */}
       {showPanel && (
-        bulkPanel ? (
-          <BulkEditPanel
-            count={selected.size}
-            categories={categories}
-            onSave={handleBulkSave}
-            onClose={() => { setBulkPanel(false); setSelected(new Set()); }}
-            isMobile={isMobile}
-          />
-        ) : editTarget ? (
-          <EditPanel
-            entry={getEntry(editTarget.day, editTarget.hour) || null}
-            day={editTarget.day}
-            hour={editTarget.hour}
-            categories={categories}
-            onSave={handleSingle}
-            onClear={handleClear}
-            onClose={() => { setEditTarget(null); setSelected(new Set()); }}
-            isMobile={isMobile}
-          />
-        ) : null
+        <EditPanel
+          entry={panelEntry}
+          day={editTarget?.day ?? 0}
+          hour={editTarget?.hour ?? 0}
+          categories={categories}
+          onSave={handleSave}
+          onClear={handleClear}
+          onClose={handleClose}
+          isMobile={isMobile}
+          bulkCount={bulkCount}
+        />
       )}
     </div>
   );
 }
 
-function BulkEditPanel({ count, categories, onSave, onClose, isMobile }: {
-  count: number;
-  categories: Category[];
-  onSave: (data: Partial<HourEntry>) => void;
-  onClose: () => void;
-  isMobile: boolean;
-}) {
-  const [category, setCategory] = useState("");
-  const [title, setTitle] = useState("");
-
-  const panelStyle: React.CSSProperties = isMobile ? {
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    right: 0,
+/* Header cell style */
+function headerCell(w: number): React.CSSProperties {
+  return {
+    position: "sticky",
+    top: 0,
+    zIndex: 20,
     background: "var(--surface)",
-    border: "1px solid var(--border)",
-    borderRadius: "16px 16px 0 0",
-    padding: "20px",
-    zIndex: 200,
-    boxShadow: "0 -16px 48px rgba(0,0,0,0.6)",
-    animation: "slideUp 0.22s ease",
-    maxHeight: "80vh",
-    overflowY: "auto",
-  } : {
-    position: "fixed",
-    top: 56,
-    right: 0,
-    bottom: 0,
-    width: 320,
-    background: "var(--surface)",
-    borderLeft: "1px solid var(--border)",
-    padding: "24px",
-    zIndex: 100,
-    boxShadow: "-12px 0 40px rgba(0,0,0,0.4)",
-    animation: "slideRight 0.22s ease",
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 20,
+    borderBottom: "1px solid var(--border)",
+    padding: "8px 4px",
+    textAlign: "center",
+    fontSize: 11,
+    fontWeight: 800,
+    fontFamily: "Inter, sans-serif",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    ...(w ? { width: w, flexShrink: 0 } : {}),
   };
-
-  return (
-    <>
-      {isMobile && (
-        <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 199 }} />
-      )}
-      <div style={panelStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 2 }}>Bulk Fill</div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-              {count} hour{count !== 1 ? "s" : ""} selected
-            </h3>
-          </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--muted)", fontSize: 20, cursor: "pointer" }}>✕</button>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-              Category
-            </label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {categories.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setCategory(cat.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    border: `2px solid ${category === cat.id ? cat.color : "var(--border)"}`,
-                    background: category === cat.id ? `${cat.color}22` : "var(--surface2)",
-                    color: category === cat.id ? cat.color : "var(--muted)",
-                    fontSize: 13,
-                    fontWeight: category === cat.id ? 600 : 400,
-                    cursor: "pointer",
-                    transition: "all 0.12s",
-                  }}
-                >
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-              Title
-            </label>
-            <input
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Sleep, Work session..."
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                color: "var(--text)",
-                fontSize: 14,
-                outline: "none",
-              }}
-              onFocus={e => e.target.style.borderColor = "var(--accent)"}
-              onBlur={e => e.target.style.borderColor = "var(--border)"}
-            />
-          </div>
-
-          <button
-            onClick={() => { if (category) onSave({ category, title }); }}
-            disabled={!category}
-            style={{
-              padding: "12px",
-              background: category ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "var(--border)",
-              color: category ? "#fff" : "var(--muted)",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: category ? "pointer" : "not-allowed",
-              boxShadow: category ? "0 4px 12px rgba(59,130,246,0.25)" : "none",
-            }}
-          >
-            Fill {count} Hour{count !== 1 ? "s" : ""}
-          </button>
-        </div>
-      </div>
-    </>
-  );
 }

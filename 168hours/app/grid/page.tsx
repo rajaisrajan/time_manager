@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 import { getWeekId, getWeekEntries, offsetWeekId, duplicatePreviousWeek, exportToCSV, exportToJSON, getCategories } from "@/lib/storage";
@@ -8,16 +8,17 @@ import { HourEntry, Category } from "@/lib/types";
 import Navbar from "@/components/Navbar";
 import WeeklyGrid from "@/components/WeeklyGrid";
 import CategoryLegend from "@/components/CategoryLegend";
-import QuickFill from "@/components/QuickFill";
+import { exportToPDF } from "@/lib/pdfExport";
 
 export default function GridPage() {
   const router = useRouter();
   const [weekId, setWeekId] = useState(() => getWeekId());
   const [entries, setEntries] = useState<HourEntry[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [showQuickFill, setShowQuickFill] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace("/login"); return; }
@@ -30,12 +31,30 @@ export default function GridPage() {
     if (mounted) setEntries(getWeekEntries(weekId));
   }, [weekId, mounted]);
 
+  // Close export dropdown on outside click
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setShowExport(false);
+      }
+    }
+    if (showExport) document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showExport]);
+
   if (!mounted) return null;
 
   const logged = entries.filter(e => e.category).length;
   const pct = Math.round((logged / 168) * 100);
 
-  function handleExport(format: "csv" | "json") {
+  async function handleExport(format: "csv" | "json" | "pdf") {
+    setShowExport(false);
+    if (format === "pdf") {
+      setPdfLoading(true);
+      try { await exportToPDF(weekId, entries, categories); }
+      finally { setPdfLoading(false); }
+      return;
+    }
     const content = format === "csv" ? exportToCSV(weekId) : exportToJSON(weekId);
     const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "application/json" });
     const url = URL.createObjectURL(blob);
@@ -44,150 +63,98 @@ export default function GridPage() {
     a.download = `168hours-${weekId}.${format}`;
     a.click();
     URL.revokeObjectURL(url);
-    setShowExport(false);
   }
 
   function handleDuplicate() {
-    const newEntries = duplicatePreviousWeek(weekId);
-    setEntries(newEntries);
+    setEntries(duplicatePreviousWeek(weekId));
   }
+
+  const toolbarBtnStyle: React.CSSProperties = {
+    padding: "6px 12px",
+    background: "var(--surface2)",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    color: "var(--text-dim)",
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: "Inter, sans-serif",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    transition: "all 0.15s",
+    whiteSpace: "nowrap" as const,
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       <Navbar />
 
-      {/* Week toolbar */}
+      {/* Toolbar */}
       <div style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        padding: "10px 20px",
+        gap: 10,
+        padding: "8px 16px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--border)",
         flexWrap: "wrap",
+        minHeight: 52,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Week nav */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             onClick={() => setWeekId(w => offsetWeekId(w, -1))}
-            style={{
-              width: 30, height: 30,
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              color: "var(--text)",
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={{ ...toolbarBtnStyle, padding: "6px 10px", fontSize: 14 }}
           >‹</button>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+          <div style={{ textAlign: "center", minWidth: 160 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", fontFamily: "Inter, sans-serif", letterSpacing: "-0.2px" }}>
               {getWeekLabel(weekId)}
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>{weekId}</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "Inter, sans-serif" }}>{weekId}</div>
           </div>
           <button
             onClick={() => setWeekId(w => offsetWeekId(w, 1))}
-            style={{
-              width: 30, height: 30,
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              color: "var(--text)",
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={{ ...toolbarBtnStyle, padding: "6px 10px", fontSize: 14 }}
           >›</button>
           <button
             onClick={() => setWeekId(getWeekId())}
-            style={{
-              padding: "4px 10px",
-              background: "transparent",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              color: "var(--muted)",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              marginLeft: 4,
-            }}
+            style={{ ...toolbarBtnStyle, padding: "5px 10px", fontSize: 11, color: "var(--muted)" }}
           >Today</button>
         </div>
 
-        {/* Progress bar */}
-        <div style={{ flex: 1, minWidth: 120, maxWidth: 240 }}>
+        {/* Progress */}
+        <div style={{ flex: 1, minWidth: 100, maxWidth: 200 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--muted)" }}>{logged} / 168 logged</span>
-            <span style={{ fontSize: 11, color: "var(--accent2)", fontWeight: 600 }}>{pct}%</span>
+            <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "Inter, sans-serif" }}>{logged}/168</span>
+            <span style={{ fontSize: 10, color: "var(--accent2)", fontWeight: 700, fontFamily: "Inter, sans-serif" }}>{pct}%</span>
           </div>
-          <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
+          <div style={{ height: 3, background: "var(--surface2)", borderRadius: 2, overflow: "hidden" }}>
             <div style={{
               height: "100%",
               width: `${pct}%`,
-              background: "linear-gradient(90deg, #1d4ed8, #3b82f6)",
+              background: "linear-gradient(90deg, #7c3aed, #a78bfa)",
               borderRadius: 2,
-              transition: "width 0.3s ease",
+              transition: "width 0.4s ease",
+              boxShadow: "0 0 6px rgba(139,92,246,0.6)",
             }} />
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-          <button
-            onClick={() => setShowQuickFill(true)}
-            style={{
-              padding: "6px 14px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              color: "var(--text)",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >⚡ Quick Fill</button>
-
-          <button
-            onClick={handleDuplicate}
-            style={{
-              padding: "6px 14px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              color: "var(--text)",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+          <button onClick={handleDuplicate} style={toolbarBtnStyle}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent2)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)"; }}
           >⎘ Copy Last Week</button>
 
-          <div style={{ position: "relative" }}>
+          {/* Export dropdown */}
+          <div style={{ position: "relative" }} ref={exportRef}>
             <button
-              onClick={() => setShowExport(e => !e)}
-              style={{
-                padding: "6px 14px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                color: "var(--text)",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >↓ Export</button>
+              onClick={() => setShowExport(v => !v)}
+              style={{ ...toolbarBtnStyle, ...(showExport ? { borderColor: "var(--accent)", color: "var(--accent2)" } : {}) }}
+            >
+              {pdfLoading ? "⏳" : "↓"} Export
+            </button>
             {showExport && (
               <div className="fade-in" style={{
                 position: "absolute",
@@ -195,31 +162,37 @@ export default function GridPage() {
                 right: 0,
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: 10,
+                borderRadius: 12,
                 overflow: "hidden",
                 zIndex: 50,
-                minWidth: 140,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                minWidth: 160,
+                boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
               }}>
-                {["csv","json"].map(fmt => (
+                {(["csv","json","pdf"] as const).map((fmt, i, arr) => (
                   <button
                     key={fmt}
-                    onClick={() => handleExport(fmt as "csv" | "json")}
+                    onClick={() => handleExport(fmt)}
                     style={{
-                      display: "block",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
                       width: "100%",
-                      padding: "10px 16px",
+                      padding: "11px 16px",
                       background: "transparent",
                       border: "none",
-                      borderBottom: fmt === "csv" ? "1px solid var(--border)" : "none",
-                      color: "var(--text)",
+                      borderBottom: i < arr.length - 1 ? "1px solid var(--border-dim)" : "none",
+                      color: "var(--text-dim)",
                       fontSize: 13,
+                      fontWeight: 500,
+                      fontFamily: "Inter, sans-serif",
                       textAlign: "left",
                       cursor: "pointer",
+                      transition: "background 0.1s",
                     }}
-                    onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = "var(--surface2)"}
-                    onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = "transparent"}
+                    onMouseEnter={e => { e.currentTarget.style.background = "var(--surface2)"; e.currentTarget.style.color = "var(--accent2)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-dim)"; }}
                   >
+                    <span style={{ fontSize: 14 }}>{fmt === "csv" ? "📊" : fmt === "json" ? "{ }" : "📄"}</span>
                     Export as .{fmt.toUpperCase()}
                   </button>
                 ))}
@@ -229,7 +202,7 @@ export default function GridPage() {
         </div>
       </div>
 
-      {/* Main grid */}
+      {/* Grid */}
       <WeeklyGrid
         weekId={weekId}
         entries={entries}
@@ -242,15 +215,6 @@ export default function GridPage() {
         categories={categories}
         onCategoriesChange={setCategories}
       />
-
-      {showQuickFill && (
-        <QuickFill
-          weekId={weekId}
-          categories={categories}
-          onFill={setEntries}
-          onClose={() => setShowQuickFill(false)}
-        />
-      )}
     </div>
   );
 }

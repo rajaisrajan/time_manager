@@ -17,10 +17,11 @@ export default function LoginPage() {
         setSession();
         router.push("/grid");
       } else {
-        setError("Incorrect password. Try again.");
+        setError("Wrong password. Try again.");
         setLoading(false);
+        setPassword("");
       }
-    }, 400);
+    }, 350);
   }
 
   return (
@@ -30,112 +31,138 @@ export default function LoginPage() {
       alignItems: "center",
       justifyContent: "center",
       background: "var(--bg)",
-      padding: "16px",
+      padding: "20px",
+      position: "relative",
+      overflow: "hidden",
     }}>
+      {/* Background glow */}
+      <div style={{
+        position: "absolute",
+        top: "30%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 500,
+        height: 400,
+        background: "radial-gradient(ellipse, rgba(139,92,246,0.12) 0%, transparent 70%)",
+        pointerEvents: "none",
+      }} />
+
       <div className="fade-in" style={{
         width: "100%",
-        maxWidth: 400,
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 16,
-        padding: "40px 36px",
-        boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
+        maxWidth: 380,
+        position: "relative",
       }}>
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 56,
-            height: 56,
-            background: "linear-gradient(135deg, #1d4ed8, #3b82f6)",
-            borderRadius: 14,
-            marginBottom: 20,
-            boxShadow: "0 8px 24px rgba(59,130,246,0.3)",
-          }}>
-            <span style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>⧖</span>
-          </div>
-          <h1 style={{
-            fontSize: 26,
-            fontWeight: 700,
-            color: "var(--text)",
-            margin: 0,
-            letterSpacing: "-0.5px",
-          }}>168 Hours</h1>
-          <p style={{
-            color: "var(--muted)",
-            fontSize: 14,
-            marginTop: 6,
-            margin: "6px 0 0",
-          }}>Every hour of your week, accounted for.</p>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <label style={{
-              display: "block",
-              fontSize: 12,
-              fontWeight: 600,
+        {/* Card */}
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 20,
+          padding: "36px 32px 32px",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(139,92,246,0.08)",
+        }}>
+          {/* Logo */}
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 60,
+              height: 60,
+              background: "linear-gradient(135deg, #7c3aed, #a78bfa)",
+              borderRadius: 16,
+              marginBottom: 18,
+              boxShadow: "0 8px 32px rgba(139,92,246,0.5)",
+              fontSize: 26,
+              color: "#fff",
+            }}>⧖</div>
+            <h1 style={{
+              fontSize: 24,
+              fontWeight: 800,
+              letterSpacing: "-0.6px",
+              color: "var(--text)",
+              fontFamily: "Inter, sans-serif",
+              marginBottom: 6,
+            }}>168 Hours</h1>
+            <p style={{
+              fontSize: 13,
               color: "var(--muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              marginBottom: 8,
-            }}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Enter your password"
-              autoFocus
+              fontFamily: "Inter, sans-serif",
+              lineHeight: 1.5,
+            }}>Every hour of your week, accounted for.</p>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={{
+                display: "block",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                marginBottom: 8,
+                fontFamily: "Inter, sans-serif",
+              }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setError(""); }}
+                placeholder="Enter your password"
+                autoFocus
+                autoComplete="current-password"
+                className="field"
+                style={{
+                  borderColor: error ? "#f87171" : undefined,
+                  boxShadow: error ? "0 0 0 3px rgba(248,113,113,0.15)" : undefined,
+                }}
+              />
+              {error && (
+                <div style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: "#f87171",
+                  fontFamily: "Inter, sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}>⚠ {error}</div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !password}
+              className="btn btn-primary"
               style={{
                 width: "100%",
-                padding: "12px 14px",
-                background: "var(--surface2)",
-                border: `1px solid ${error ? "#dc2626" : "var(--border)"}`,
-                borderRadius: 10,
-                color: "var(--text)",
+                minHeight: 46,
                 fontSize: 15,
-                outline: "none",
-                transition: "border-color 0.15s",
+                marginTop: 4,
+                opacity: loading || !password ? 0.5 : 1,
+                cursor: loading || !password ? "not-allowed" : "pointer",
+                letterSpacing: "-0.2px",
               }}
-              onFocus={e => {
-                if (!error) e.target.style.borderColor = "var(--accent)";
-              }}
-              onBlur={e => {
-                if (!error) e.target.style.borderColor = "var(--border)";
-              }}
-            />
-            {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 6, margin: "6px 0 0" }}>{error}</p>}
+            >
+              {loading ? "Signing in…" : "Sign In →"}
+            </button>
+          </form>
+
+          <div style={{
+            textAlign: "center",
+            marginTop: 24,
+            fontSize: 11,
+            color: "var(--muted)",
+            fontFamily: "Inter, sans-serif",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}>
+            <span style={{ width: 24, height: 1, background: "var(--border)", display: "inline-block" }} />
+            Personal access · No accounts
+            <span style={{ width: 24, height: 1, background: "var(--border)", display: "inline-block" }} />
           </div>
-
-          <button
-            type="submit"
-            disabled={loading || !password}
-            style={{
-              width: "100%",
-              padding: "13px",
-              background: loading || !password ? "var(--border)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)",
-              color: loading || !password ? "var(--muted)" : "#fff",
-              border: "none",
-              borderRadius: 10,
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: loading || !password ? "not-allowed" : "pointer",
-              transition: "all 0.15s",
-              marginTop: 4,
-              boxShadow: loading || !password ? "none" : "0 4px 16px rgba(59,130,246,0.3)",
-            }}
-          >
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-        </form>
-
-        <p style={{
-          textAlign: "center",
-          color: "var(--muted)",
-          fontSize: 12,
-          marginTop: 28,
-        }}>Personal access only · No accounts needed</p>
+        </div>
       </div>
     </div>
   );
