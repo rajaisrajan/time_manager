@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
     "*.repl.co",
     "*",
   ],
+  async rewrites() {
+    return [
+      {
+        source: "/__mockup/:path*",
+        destination: "http://localhost:3001/__mockup/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
