@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import pool from "@/lib/db";
 
 export async function GET() {
-  const { data, error } = await supabase
-    .from("custom_categories")
-    .select("*")
-    .order("created_at", { ascending: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  try {
+    const result = await pool.query(
+      "SELECT id, name, color FROM custom_categories ORDER BY created_at ASC"
+    );
+    return NextResponse.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -17,16 +19,27 @@ export async function POST(req: NextRequest) {
 
   if (!id || !name || !color) return NextResponse.json({ error: "id, name, color required" }, { status: 400 });
 
-  const { error } = await supabase.from("custom_categories").insert({ id, name, color });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    await pool.query(
+      "INSERT INTO custom_categories (id, name, color) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+      [id, name, color]
+    );
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const { error } = await supabase.from("custom_categories").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    await pool.query("DELETE FROM custom_categories WHERE id = $1", [id]);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }

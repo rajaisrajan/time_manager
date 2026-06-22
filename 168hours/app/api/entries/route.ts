@@ -1,48 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import pool from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const weekId = req.nextUrl.searchParams.get("weekId");
   if (!weekId) return NextResponse.json({ error: "weekId required" }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from("hour_entries")
-    .select("*")
-    .eq("week_id", weekId);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  try {
+    const result = await pool.query(
+      "SELECT week_id, day, hour, category, title, notes FROM hour_entries WHERE week_id = $1",
+      [weekId]
+    );
+    return NextResponse.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { weekId, entries } = body as { weekId: string; entries: Array<{ day: number; hour: number; category: string; title: string; notes?: string }> };
+  const { weekId, entries } = body as {
+    weekId: string;
+    entries: Array<{ day: number; hour: number; category: string; title: string; notes?: string }>;
+  };
 
   if (!weekId || !entries) return NextResponse.json({ error: "weekId and entries required" }, { status: 400 });
 
-  await supabase.from("hour_entries").delete().eq("week_id", weekId);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM hour_entries WHERE week_id = $1", [weekId]);
 
-  if (entries.length === 0) return NextResponse.json({ ok: true });
+    for (const e of entries) {
+      await client.query(
+        "INSERT INTO hour_entries (week_id, day, hour, category, title, notes) VALUES ($1, $2, $3, $4, $5, $6)",
+        [weekId, e.day, e.hour, e.category, e.title ?? "", e.notes ?? ""]
+      );
+    }
 
-  const rows = entries.map(e => ({
-    week_id: weekId,
-    day: e.day,
-    hour: e.hour,
-    category: e.category,
-    title: e.title ?? "",
-    notes: e.notes ?? "",
-  }));
-
-  const { error } = await supabase.from("hour_entries").insert(rows);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+    await client.query("COMMIT");
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  } finally {
+    client.release();
+  }
 }
 
 export async function DELETE(req: NextRequest) {
   const weekId = req.nextUrl.searchParams.get("weekId");
   if (!weekId) return NextResponse.json({ error: "weekId required" }, { status: 400 });
 
-  const { error } = await supabase.from("hour_entries").delete().eq("week_id", weekId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    await pool.query("DELETE FROM hour_entries WHERE week_id = $1", [weekId]);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }
