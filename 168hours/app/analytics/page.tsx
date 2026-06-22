@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 import { getWeekId, getWeekEntries, offsetWeekId, getCategories } from "@/lib/storage";
@@ -13,6 +13,20 @@ import {
 
 const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DAYS_FULL = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const PRODUCTIVITY_STORAGE_KEY = "168hours_productivity_cats";
+
+function loadProductivityCats(defaultIds: string[]): string[] {
+  if (typeof window === "undefined") return defaultIds;
+  try {
+    const raw = localStorage.getItem(PRODUCTIVITY_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as string[];
+  } catch { /* ignore */ }
+  return defaultIds;
+}
+
+function saveProductivityCats(ids: string[]) {
+  try { localStorage.setItem(PRODUCTIVITY_STORAGE_KEY, JSON.stringify(ids)); } catch { /* ignore */ }
+}
 
 export default function AnalyticsPage() {
   const router = useRouter();
@@ -20,21 +34,37 @@ export default function AnalyticsPage() {
   const [entries, setEntries] = useState<HourEntry[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [productivityCatIds, setProductivityCatIds] = useState<string[]>(["work","learning"]);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace("/login"); return; }
     setMounted(true);
-    getCategories().then(setCategories);
+    getCategories().then(cats => {
+      setCategories(cats);
+      setProductivityCatIds(loadProductivityCats(["work","learning"]));
+    });
   }, [router]);
 
   useEffect(() => {
     if (mounted) getWeekEntries(weekId).then(setEntries);
   }, [weekId, mounted]);
 
+  const toggleProductivityCat = useCallback((id: string) => {
+    setProductivityCatIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      saveProductivityCats(next);
+      return next;
+    });
+  }, []);
+
   if (!mounted) return null;
 
   const stats = computeWeekStats(entries);
   const activeCats = categories.filter(c => (stats.byCategory[c.id] || 0) > 0);
+
+  // Productivity time
+  const totalProductivityHours = productivityCatIds.reduce((sum, id) => sum + (stats.byCategory[id] || 0), 0);
+  const productivityPct = stats.totalLogged > 0 ? Math.round(totalProductivityHours / 168 * 100) : 0;
 
   const pieData = activeCats.map(c => ({
     name: c.name, value: stats.byCategory[c.id] || 0, color: c.color,
@@ -69,11 +99,11 @@ export default function AnalyticsPage() {
     insights.push({ icon: "⚠️", text: `${stats.wastedHours}h wasted — ${Math.round(stats.wastedHours / 168 * 100)}% of week` });
   if (stats.totalUnlogged > 0)
     insights.push({ icon: "📋", text: `${stats.totalUnlogged}h still unlogged this week` });
-  const productiveCats = ["work","learning","self-improvement"];
+  const builtinProductiveCats = ["work","learning","self-improvement"];
   const bestDayIdx = (() => {
     let max = 0, best = -1;
     for (let d = 0; d < 7; d++) {
-      const t = productiveCats.reduce((s, c) => s + (stats.byDay[d]?.[c] || 0), 0);
+      const t = builtinProductiveCats.reduce((s, c) => s + (stats.byDay[d]?.[c] || 0), 0);
       if (t > max) { max = t; best = d; }
     }
     return best;
@@ -82,6 +112,7 @@ export default function AnalyticsPage() {
     insights.push({ icon: "🏆", text: `${DAYS_FULL[bestDayIdx]} was your most productive day` });
 
   const scoreColor = stats.productivityScore >= 70 ? "#34d399" : stats.productivityScore >= 40 ? "#fbbf24" : "#f87171";
+  const prodColor = "#a78bfa";
   const navBtnStyle: React.CSSProperties = {
     width: 30, height: 30, background: "var(--surface2)", border: "1px solid var(--border)",
     borderRadius: 8, color: "var(--text)", fontSize: 14, cursor: "pointer",
@@ -138,6 +169,80 @@ export default function AnalyticsPage() {
               <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 2 }}>{c.unit}</div>
             </div>
           ))}
+        </div>
+
+        {/* Total Productivity Time */}
+        <div style={{
+          padding: "22px 24px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          borderColor: `${prodColor}30`,
+          boxShadow: `0 0 40px ${prodColor}08`,
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
+            {/* Left: big number */}
+            <div style={{ minWidth: 120 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 8 }}>
+                Total Productivity Time
+              </div>
+              <div style={{ fontSize: 56, fontWeight: 900, fontFamily: "Inter, sans-serif", letterSpacing: "-3px", lineHeight: 1, color: prodColor, textShadow: `0 0 28px ${prodColor}50` }}>
+                {totalProductivityHours}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 4 }}>
+                hrs · {productivityPct}% of week
+              </div>
+              <div style={{ height: 6, background: "var(--surface2)", borderRadius: 3, overflow: "hidden", marginTop: 12, maxWidth: 120 }}>
+                <div style={{
+                  height: "100%", width: `${productivityPct}%`,
+                  background: `linear-gradient(90deg, ${prodColor}80, ${prodColor})`,
+                  borderRadius: 3, transition: "width 1s ease",
+                  boxShadow: `0 0 10px ${prodColor}50`,
+                }} />
+              </div>
+            </div>
+
+            {/* Right: category toggles */}
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 12 }}>
+                Count toward productivity
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 6 }}>
+                {categories.map(cat => {
+                  const checked = productivityCatIds.includes(cat.id);
+                  const hrs = stats.byCategory[cat.id] || 0;
+                  return (
+                    <label key={cat.id} style={{
+                      display: "flex", alignItems: "center", gap: 9,
+                      padding: "8px 11px",
+                      borderRadius: 8,
+                      background: checked ? `${cat.color}18` : "var(--surface2)",
+                      border: `1px solid ${checked ? cat.color + "50" : "var(--border)"}`,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      userSelect: "none",
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleProductivityCat(cat.id)}
+                        style={{ accentColor: cat.color, width: 13, height: 13, cursor: "pointer", flexShrink: 0 }}
+                      />
+                      <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: checked ? "var(--text)" : "var(--muted)", fontFamily: "Inter, sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {cat.name}
+                      </span>
+                      {hrs > 0 && (
+                        <span style={{ fontSize: 11, color: checked ? cat.color : "var(--muted)", fontFamily: "Inter, sans-serif", fontWeight: 700, flexShrink: 0 }}>
+                          {hrs}h
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Productivity Score */}
@@ -311,8 +416,6 @@ export default function AnalyticsPage() {
     </div>
   );
 }
-
-function RowFragment({ children }: { children: React.ReactNode }) { return <>{children}</>; }
 
 const cardStyle: React.CSSProperties = {
   padding: "20px",

@@ -101,6 +101,10 @@ export async function getCategories(): Promise<Category[]> {
   }
 }
 
+export async function deleteCustomCategory(id: string): Promise<void> {
+  await fetch(`/api/categories?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function saveCustomCategory(name: string): Promise<Category> {
   const res = await fetch("/api/categories");
   const existing = res.ok ? await res.json() as unknown[] : [];
