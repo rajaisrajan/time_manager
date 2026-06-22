@@ -43,7 +43,7 @@ export default function LoginPage() {
         transform: "translate(-50%, -50%)",
         width: 500,
         height: 400,
-        background: "radial-gradient(ellipse, rgba(139,92,246,0.12) 0%, transparent 70%)",
+        background: "radial-gradient(ellipse, rgba(59,130,246,0.10) 0%, transparent 70%)",
         pointerEvents: "none",
       }} />
 
@@ -58,7 +58,7 @@ export default function LoginPage() {
           border: "1px solid var(--border)",
           borderRadius: 20,
           padding: "36px 32px 32px",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(139,92,246,0.08)",
+          boxShadow: "0 8px 40px rgba(0,0,0,0.10), 0 0 0 1px rgba(59,130,246,0.08)",
         }}>
           {/* Logo */}
           <div style={{ textAlign: "center", marginBottom: 32 }}>
@@ -68,10 +68,10 @@ export default function LoginPage() {
               justifyContent: "center",
               width: 60,
               height: 60,
-              background: "linear-gradient(135deg, #7c3aed, #a78bfa)",
+              background: "linear-gradient(135deg, #2563eb, #3b82f6)",
               borderRadius: 16,
               marginBottom: 18,
-              boxShadow: "0 8px 32px rgba(139,92,246,0.5)",
+              boxShadow: "0 8px 32px rgba(59,130,246,0.35)",
               fontSize: 26,
               color: "#fff",
             }}>⧖</div>

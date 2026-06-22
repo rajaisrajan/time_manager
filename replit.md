@@ -11,7 +11,7 @@ The app runs inside the `168hours/` directory using Next.js 15.
 
 ## User Preferences
 
-- UI Style: Slate — dark navy, structured, data-dense
+- UI Style: Cloud Light — white/light-gray, blue accent (#3b82f6), clean & airy
 - Auth: Single fixed password (`RAJA`), stored in `lib/auth.ts`
 - Data: Stored in `localStorage` (no external DB required)
 

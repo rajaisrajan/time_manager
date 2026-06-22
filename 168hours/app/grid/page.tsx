@@ -139,10 +139,10 @@ export default function GridPage() {
             <div style={{
               height: "100%",
               width: `${pct}%`,
-              background: "linear-gradient(90deg, #7c3aed, #a78bfa)",
+              background: "linear-gradient(90deg, #2563eb, #3b82f6)",
               borderRadius: 2,
               transition: "width 0.4s ease",
-              boxShadow: "0 0 6px rgba(139,92,246,0.6)",
+              boxShadow: "0 0 6px rgba(59,130,246,0.4)",
             }} />
           </div>
         </div>

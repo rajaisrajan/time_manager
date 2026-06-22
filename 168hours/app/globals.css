@@ -1,21 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #08080f;
-  --surface: #0e0e1a;
-  --surface2: #161628;
-  --border: #2a2850;
-  --border-dim: #1e1c3d;
-  --border-bright: #4a44a0;
-  --text: #eeeeff;
-  --text-dim: #c8c8ee;
-  --muted: #8080bb;
-  --accent: #8b5cf6;
-  --accent2: #a78bfa;
-  --accent3: #c4b5fd;
-  --accent-glow: rgba(139, 92, 246, 0.25);
-  --red: #f87171;
-  --green: #34d399;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface2: #f1f5f9;
+  --border: #e2e8f0;
+  --border-dim: #cbd5e1;
+  --border-bright: #93c5fd;
+  --text: #0f172a;
+  --text-dim: #334155;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent2: #2563eb;
+  --accent3: #60a5fa;
+  --accent-glow: rgba(59, 130, 246, 0.15);
+  --red: #ef4444;
+  --green: #22c55e;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -122,13 +122,13 @@ html, body {
   outline: none;
 }
 .btn-primary {
-  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(139,92,246,0.3);
+  box-shadow: 0 4px 16px rgba(59,130,246,0.3);
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #6d28d9, #7c3aed);
-  box-shadow: 0 6px 20px rgba(139,92,246,0.45);
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: 0 6px 20px rgba(59,130,246,0.45);
   transform: translateY(-1px);
 }
 .btn-ghost {

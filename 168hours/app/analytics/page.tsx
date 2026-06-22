@@ -145,7 +145,7 @@ export default function AnalyticsPage() {
     return getMonthWeekIds(ws.getFullYear(), ws.getMonth());
   })();
 
-  const prodColor = "#a78bfa";
+  const prodColor = "#2563eb";
   const pieData = activeCats.map(c => ({ name: c.name, value: stats.byCategory[c.id] || 0, color: c.color }));
   const barData = DAYS_SHORT.map((day, d) => {
     const row: Record<string, number | string> = { day };
@@ -234,7 +234,7 @@ export default function AnalyticsPage() {
             { label: "Unlogged", value: stats.totalUnlogged, unit: "hrs", accent: "var(--muted)" },
             { label: "Sleep", value: stats.sleepHours, unit: "hrs", accent: "#1d4ed8" },
             { label: "Work", value: stats.byCategory["work"] || 0, unit: "hrs", accent: "#dc2626" },
-            { label: "Learning", value: stats.byCategory["learning"] || 0, unit: "hrs", accent: "#7c3aed" },
+            { label: "Learning", value: stats.byCategory["learning"] || 0, unit: "hrs", accent: "#8b5cf6" },
             { label: "Wasted", value: stats.wastedHours, unit: "hrs", accent: "#57534e" },
           ].map(c => (
             <div key={c.label} className="fade-in" style={{
@@ -448,7 +448,7 @@ export default function AnalyticsPage() {
               }} />
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", lineHeight: 1.7 }}>
-              Based on <span style={{ color: "#a78bfa" }}>learning</span>, <span style={{ color: "#f87171" }}>work</span> &amp; <span style={{ color: "#34d399" }}>self-improvement</span> vs <span style={{ color: "#78716c" }}>wasted time</span>.
+              Based on <span style={{ color: "#8b5cf6" }}>learning</span>, <span style={{ color: "#ef4444" }}>work</span> &amp; <span style={{ color: "#22c55e" }}>self-improvement</span> vs <span style={{ color: "#94a3b8" }}>wasted time</span>.
             </div>
           </div>
         </div>

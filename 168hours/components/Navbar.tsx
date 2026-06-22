@@ -21,7 +21,7 @@ export default function Navbar() {
       position: "sticky",
       top: 0,
       zIndex: 100,
-      background: "rgba(8,8,15,0.9)",
+      background: "rgba(255,255,255,0.85)",
       backdropFilter: "blur(16px)",
       WebkitBackdropFilter: "blur(16px)",
       borderBottom: "1px solid var(--border)",
@@ -36,7 +36,7 @@ export default function Navbar() {
         <div style={{
           width: 28,
           height: 28,
-          background: "linear-gradient(135deg, #7c3aed, #a78bfa)",
+          background: "linear-gradient(135deg, #2563eb, #3b82f6)",
           borderRadius: 8,
           display: "flex",
           alignItems: "center",
@@ -45,7 +45,7 @@ export default function Navbar() {
           fontWeight: 800,
           color: "#fff",
           flexShrink: 0,
-          boxShadow: "0 0 12px rgba(139,92,246,0.4)",
+          boxShadow: "0 0 12px rgba(59,130,246,0.3)",
         }}>⧖</div>
         <span style={{
           fontWeight: 800,
