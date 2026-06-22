@@ -12,6 +12,7 @@ export interface Category {
   name: string;
   color: string;
   isDefault?: boolean;
+  isProductive?: boolean;
 }
 
 export interface WeekStats {

@@ -1,6 +1,22 @@
 import { HourEntry, Category } from "./types";
 import { DEFAULT_CATEGORIES, generateColor } from "./categories";
 
+const PRODUCTIVITY_STORAGE_KEY = "168hours_productivity_cats";
+const DEFAULT_PRODUCTIVE_IDS = ["work", "learning"];
+
+export function getProductivityCatIds(): string[] {
+  if (typeof window === "undefined") return DEFAULT_PRODUCTIVE_IDS;
+  try {
+    const raw = localStorage.getItem(PRODUCTIVITY_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as string[];
+  } catch { /* ignore */ }
+  return DEFAULT_PRODUCTIVE_IDS;
+}
+
+export function setProductivityCatIds(ids: string[]): void {
+  try { localStorage.setItem(PRODUCTIVITY_STORAGE_KEY, JSON.stringify(ids)); } catch { /* ignore */ }
+}
+
 export function getWeekId(date: Date = new Date()): string {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const day = d.getUTCDay() || 7;
@@ -94,8 +110,15 @@ export async function getCategories(): Promise<Category[]> {
     const res = await fetch("/api/categories");
     if (!res.ok) return DEFAULT_CATEGORIES;
     const custom = await res.json() as Array<{ id: string; name: string; color: string }>;
-    const customCats: Category[] = custom.map(c => ({ id: c.id, name: c.name, color: c.color, isDefault: false }));
-    return [...DEFAULT_CATEGORIES, ...customCats];
+    const productiveIds = getProductivityCatIds();
+    const customCats: Category[] = custom.map(c => ({
+      id: c.id,
+      name: c.name,
+      color: c.color,
+      isDefault: false,
+      isProductive: productiveIds.includes(c.id),
+    }));
+    return [...DEFAULT_CATEGORIES.map(c => ({ ...c, isProductive: productiveIds.includes(c.id) })), ...customCats];
   } catch {
     return DEFAULT_CATEGORIES;
   }
@@ -103,22 +126,36 @@ export async function getCategories(): Promise<Category[]> {
 
 export async function deleteCustomCategory(id: string): Promise<void> {
   await fetch(`/api/categories?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  const ids = getProductivityCatIds().filter(x => x !== id);
+  setProductivityCatIds(ids);
 }
 
-export async function saveCustomCategory(name: string): Promise<Category> {
+export async function saveCustomCategory(
+  name: string,
+  color?: string,
+  isProductive?: boolean,
+): Promise<Category> {
   const res = await fetch("/api/categories");
   const existing = res.ok ? await res.json() as unknown[] : [];
+  const chosenColor = color ?? generateColor(existing.length);
   const newCat: Category = {
     id: `custom_${Date.now()}`,
     name,
-    color: generateColor(existing.length),
+    color: chosenColor,
     isDefault: false,
+    isProductive: isProductive ?? false,
   };
   await fetch("/api/categories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(newCat),
   });
+  if (isProductive) {
+    const ids = getProductivityCatIds();
+    if (!ids.includes(newCat.id)) {
+      setProductivityCatIds([...ids, newCat.id]);
+    }
+  }
   return newCat;
 }
 

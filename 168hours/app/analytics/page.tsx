@@ -2,7 +2,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
-import { getWeekId, getWeekEntries, offsetWeekId, getCategories } from "@/lib/storage";
+import {
+  getWeekId, getWeekEntries, offsetWeekId, getCategories,
+  getProductivityCatIds, setProductivityCatIds, getWeekStart,
+} from "@/lib/storage";
 import { getWeekLabel, computeWeekStats } from "@/lib/utils";
 import { HourEntry, Category } from "@/lib/types";
 import Navbar from "@/components/Navbar";
@@ -11,21 +14,27 @@ import {
   ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
-const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const DAYS_FULL = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const PRODUCTIVITY_STORAGE_KEY = "168hours_productivity_cats";
+const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAYS_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-function loadProductivityCats(defaultIds: string[]): string[] {
-  if (typeof window === "undefined") return defaultIds;
-  try {
-    const raw = localStorage.getItem(PRODUCTIVITY_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as string[];
-  } catch { /* ignore */ }
-  return defaultIds;
+type ProdPeriod = "day" | "week" | "month" | "pick";
+
+function getMonthWeekIds(year: number, month: number): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const id = getWeekId(new Date(year, month, d));
+    if (!seen.has(id)) { seen.add(id); ids.push(id); }
+  }
+  return ids;
 }
 
-function saveProductivityCats(ids: string[]) {
-  try { localStorage.setItem(PRODUCTIVITY_STORAGE_KEY, JSON.stringify(ids)); } catch { /* ignore */ }
+function dateToWeekAndDay(date: Date): { weekId: string; day: number } {
+  const weekId = getWeekId(date);
+  const dow = date.getDay();
+  const day = dow === 0 ? 6 : dow - 1;
+  return { weekId, day };
 }
 
 export default function AnalyticsPage() {
@@ -34,14 +43,22 @@ export default function AnalyticsPage() {
   const [entries, setEntries] = useState<HourEntry[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [productivityCatIds, setProductivityCatIds] = useState<string[]>(["work","learning"]);
+  const [productivityCatIds, setLocalProductivityCatIds] = useState<string[]>(["work", "learning"]);
+
+  // Productivity period state
+  const [prodPeriod, setProdPeriod] = useState<ProdPeriod>("week");
+  const [monthEntries, setMonthEntries] = useState<HourEntry[]>([]);
+  const [monthLoading, setMonthLoading] = useState(false);
+  const [pickDate, setPickDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [pickEntries, setPickEntries] = useState<HourEntry[]>([]);
+  const [pickLoading, setPickLoading] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace("/login"); return; }
     setMounted(true);
     getCategories().then(cats => {
       setCategories(cats);
-      setProductivityCatIds(loadProductivityCats(["work","learning"]));
+      setLocalProductivityCatIds(getProductivityCatIds());
     });
   }, [router]);
 
@@ -49,10 +66,45 @@ export default function AnalyticsPage() {
     if (mounted) getWeekEntries(weekId).then(setEntries);
   }, [weekId, mounted]);
 
+  // Load monthly entries when period = month or weekId changes
+  useEffect(() => {
+    if (!mounted || prodPeriod !== "month") return;
+    const weekStart = getWeekStart(weekId);
+    const year = weekStart.getFullYear();
+    const month = weekStart.getMonth();
+    setMonthLoading(true);
+    const weekIds = getMonthWeekIds(year, month);
+    Promise.all(weekIds.map(w => getWeekEntries(w))).then(results => {
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const monthDays: Set<string> = new Set();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(year, month, d);
+        const { weekId: wid, day } = dateToWeekAndDay(date);
+        monthDays.add(`${wid}::${day}`);
+      }
+      const all = results.flat().filter(e => monthDays.has(`${e.weekId}::${e.day}`));
+      setMonthEntries(all);
+      setMonthLoading(false);
+    });
+  }, [mounted, prodPeriod, weekId]);
+
+  // Load pick-day entries
+  useEffect(() => {
+    if (!mounted || prodPeriod !== "pick") return;
+    const date = new Date(pickDate);
+    if (isNaN(date.getTime())) return;
+    const { weekId: wid, day } = dateToWeekAndDay(date);
+    setPickLoading(true);
+    getWeekEntries(wid).then(all => {
+      setPickEntries(all.filter(e => e.day === day));
+      setPickLoading(false);
+    });
+  }, [mounted, prodPeriod, pickDate]);
+
   const toggleProductivityCat = useCallback((id: string) => {
-    setProductivityCatIds(prev => {
+    setLocalProductivityCatIds(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      saveProductivityCats(next);
+      setProductivityCatIds(next);
       return next;
     });
   }, []);
@@ -62,20 +114,44 @@ export default function AnalyticsPage() {
   const stats = computeWeekStats(entries);
   const activeCats = categories.filter(c => (stats.byCategory[c.id] || 0) > 0);
 
-  // Productivity time
-  const totalProductivityHours = productivityCatIds.reduce((sum, id) => sum + (stats.byCategory[id] || 0), 0);
-  const productivityPct = stats.totalLogged > 0 ? Math.round(totalProductivityHours / 168 * 100) : 0;
+  // --- Productivity computations ---
+  const prodHours = (ents: HourEntry[]) =>
+    productivityCatIds.reduce((sum, id) => sum + ents.filter(e => e.category === id).length, 0);
 
-  const pieData = activeCats.map(c => ({
-    name: c.name, value: stats.byCategory[c.id] || 0, color: c.color,
-  }));
+  const weeklyProdHours = prodHours(entries);
+  const weeklyProdPct = Math.round(weeklyProdHours / 168 * 100);
 
+  // Day-wise (current week)
+  const dayProdData = DAYS_SHORT.map((label, d) => {
+    const dayEntries = entries.filter(e => e.day === d);
+    return { label, hours: prodHours(dayEntries) };
+  });
+  const dayProdMax = Math.max(...dayProdData.map(d => d.hours), 1);
+
+  // Monthly
+  const monthlyProdHours = prodHours(monthEntries);
+  const weekStart = getWeekStart(weekId);
+  const monthName = weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  // Pick a day
+  const dayProdHours = prodHours(pickEntries);
+  const pickDateLabel = pickDate
+    ? new Date(pickDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+    : "";
+
+  // Monthly week-by-week breakdown (for bar chart in month view)
+  const monthWeekIds = (() => {
+    const ws = getWeekStart(weekId);
+    return getMonthWeekIds(ws.getFullYear(), ws.getMonth());
+  })();
+
+  const prodColor = "#a78bfa";
+  const pieData = activeCats.map(c => ({ name: c.name, value: stats.byCategory[c.id] || 0, color: c.color }));
   const barData = DAYS_SHORT.map((day, d) => {
     const row: Record<string, number | string> = { day };
     activeCats.forEach(c => { row[c.name] = stats.byDay[d]?.[c.id] || 0; });
     return row;
   });
-
   const heatmapRows = Array.from({ length: 24 }, (_, h) => ({
     hour: h,
     days: Array.from({ length: 7 }, (_, d) => {
@@ -85,12 +161,11 @@ export default function AnalyticsPage() {
     }),
   }));
 
-  // Insights
   const insights: { icon: string; text: string }[] = [];
   if (stats.sleepHours > 0)
     insights.push({ icon: "🌙", text: `${stats.sleepHours}h sleeping — ${Math.round(stats.sleepHours / 7 * 10) / 10}h avg/night` });
   if (stats.byCategory["work"] > 0)
-    insights.push({ icon: "💼", text: `Work = ${Math.round((stats.byCategory["work"]) / 168 * 100)}% of your week (${stats.byCategory["work"]}h)` });
+    insights.push({ icon: "💼", text: `Work = ${Math.round(stats.byCategory["work"] / 168 * 100)}% of your week (${stats.byCategory["work"]}h)` });
   if (stats.byCategory["learning"] > 0)
     insights.push({ icon: "📚", text: `${stats.byCategory["learning"]}h invested in learning` });
   if (stats.byCategory["self-improvement"] > 0)
@@ -99,11 +174,11 @@ export default function AnalyticsPage() {
     insights.push({ icon: "⚠️", text: `${stats.wastedHours}h wasted — ${Math.round(stats.wastedHours / 168 * 100)}% of week` });
   if (stats.totalUnlogged > 0)
     insights.push({ icon: "📋", text: `${stats.totalUnlogged}h still unlogged this week` });
-  const builtinProductiveCats = ["work","learning","self-improvement"];
+  const builtinProd = ["work", "learning", "self-improvement"];
   const bestDayIdx = (() => {
     let max = 0, best = -1;
     for (let d = 0; d < 7; d++) {
-      const t = builtinProductiveCats.reduce((s, c) => s + (stats.byDay[d]?.[c] || 0), 0);
+      const t = builtinProd.reduce((s, c) => s + (stats.byDay[d]?.[c] || 0), 0);
       if (t > max) { max = t; best = d; }
     }
     return best;
@@ -112,12 +187,18 @@ export default function AnalyticsPage() {
     insights.push({ icon: "🏆", text: `${DAYS_FULL[bestDayIdx]} was your most productive day` });
 
   const scoreColor = stats.productivityScore >= 70 ? "#34d399" : stats.productivityScore >= 40 ? "#fbbf24" : "#f87171";
-  const prodColor = "#a78bfa";
   const navBtnStyle: React.CSSProperties = {
     width: 30, height: 30, background: "var(--surface2)", border: "1px solid var(--border)",
     borderRadius: 8, color: "var(--text)", fontSize: 14, cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif",
   };
+
+  const periodTabs: { id: ProdPeriod; label: string }[] = [
+    { id: "day", label: "Day" },
+    { id: "week", label: "Week" },
+    { id: "month", label: "Month" },
+    { id: "pick", label: "Pick a Day" },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--bg)" }}>
@@ -157,12 +238,9 @@ export default function AnalyticsPage() {
             { label: "Wasted", value: stats.wastedHours, unit: "hrs", accent: "#57534e" },
           ].map(c => (
             <div key={c.label} className="fade-in" style={{
-              padding: "14px 16px",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              borderLeft: `3px solid ${c.accent}`,
-              boxShadow: `0 0 20px ${c.accent}15`,
+              padding: "14px 16px", background: "var(--surface)",
+              border: "1px solid var(--border)", borderRadius: 12,
+              borderLeft: `3px solid ${c.accent}`, boxShadow: `0 0 20px ${c.accent}15`,
             }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 6 }}>{c.label}</div>
               <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text)", fontFamily: "Inter, sans-serif", letterSpacing: "-1px", lineHeight: 1 }}>{c.value}</div>
@@ -171,92 +249,187 @@ export default function AnalyticsPage() {
           ))}
         </div>
 
-        {/* Total Productivity Time */}
+        {/* ── Total Productivity Time ── */}
         <div style={{
-          padding: "22px 24px",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 16,
-          borderColor: `${prodColor}30`,
+          padding: "22px 24px", background: "var(--surface)",
+          border: `1px solid ${prodColor}30`, borderRadius: 16,
           boxShadow: `0 0 40px ${prodColor}08`,
         }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
-            {/* Left: big number */}
-            <div style={{ minWidth: 120 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 8 }}>
-                Total Productivity Time
-              </div>
-              <div style={{ fontSize: 56, fontWeight: 900, fontFamily: "Inter, sans-serif", letterSpacing: "-3px", lineHeight: 1, color: prodColor, textShadow: `0 0 28px ${prodColor}50` }}>
-                {totalProductivityHours}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 4 }}>
-                hrs · {productivityPct}% of week
-              </div>
-              <div style={{ height: 6, background: "var(--surface2)", borderRadius: 3, overflow: "hidden", marginTop: 12, maxWidth: 120 }}>
-                <div style={{
-                  height: "100%", width: `${productivityPct}%`,
-                  background: `linear-gradient(90deg, ${prodColor}80, ${prodColor})`,
-                  borderRadius: 3, transition: "width 1s ease",
-                  boxShadow: `0 0 10px ${prodColor}50`,
-                }} />
-              </div>
+          {/* Card title + period tabs */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", fontFamily: "Inter, sans-serif", letterSpacing: "-0.2px" }}>
+              Total Productivity Time
             </div>
-
-            {/* Right: category toggles */}
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 12 }}>
-                Count toward productivity
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 6 }}>
-                {categories.map(cat => {
-                  const checked = productivityCatIds.includes(cat.id);
-                  const hrs = stats.byCategory[cat.id] || 0;
-                  return (
-                    <label key={cat.id} style={{
-                      display: "flex", alignItems: "center", gap: 9,
-                      padding: "8px 11px",
-                      borderRadius: 8,
-                      background: checked ? `${cat.color}18` : "var(--surface2)",
-                      border: `1px solid ${checked ? cat.color + "50" : "var(--border)"}`,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      userSelect: "none",
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleProductivityCat(cat.id)}
-                        style={{ accentColor: cat.color, width: 13, height: 13, cursor: "pointer", flexShrink: 0 }}
-                      />
-                      <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: checked ? "var(--text)" : "var(--muted)", fontFamily: "Inter, sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {cat.name}
-                      </span>
-                      {hrs > 0 && (
-                        <span style={{ fontSize: 11, color: checked ? cat.color : "var(--muted)", fontFamily: "Inter, sans-serif", fontWeight: 700, flexShrink: 0 }}>
-                          {hrs}h
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
+            <div style={{ display: "flex", gap: 4, marginLeft: "auto", flexWrap: "wrap" }}>
+              {periodTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setProdPeriod(tab.id)}
+                  style={{
+                    padding: "5px 13px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    cursor: "pointer", fontFamily: "Inter, sans-serif", transition: "all 0.15s",
+                    background: prodPeriod === tab.id ? prodColor : "var(--surface2)",
+                    border: `1px solid ${prodPeriod === tab.id ? prodColor : "var(--border)"}`,
+                    color: prodPeriod === tab.id ? "#fff" : "var(--muted)",
+                  }}
+                >{tab.label}</button>
+              ))}
             </div>
           </div>
+
+          {/* Period: WEEK */}
+          {prodPeriod === "week" && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 120 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginBottom: 6 }}>{getWeekLabel(weekId)}</div>
+                <div style={{ fontSize: 56, fontWeight: 900, fontFamily: "Inter, sans-serif", letterSpacing: "-3px", lineHeight: 1, color: prodColor, textShadow: `0 0 28px ${prodColor}50` }}>
+                  {weeklyProdHours}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 4 }}>hrs · {weeklyProdPct}% of week</div>
+                <div style={{ height: 6, background: "var(--surface2)", borderRadius: 3, overflow: "hidden", marginTop: 12, maxWidth: 120 }}>
+                  <div style={{ height: "100%", width: `${weeklyProdPct}%`, background: `linear-gradient(90deg, ${prodColor}80, ${prodColor})`, borderRadius: 3, transition: "width 1s ease" }} />
+                </div>
+              </div>
+              <CategoryToggles categories={categories} productivityCatIds={productivityCatIds} stats={stats.byCategory} onToggle={toggleProductivityCat} />
+            </div>
+          )}
+
+          {/* Period: DAY */}
+          {prodPeriod === "day" && (
+            <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginBottom: 14 }}>{getWeekLabel(weekId)} — per day</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 100 }}>
+                  {dayProdData.map(({ label, hours }) => (
+                    <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: prodColor, fontFamily: "Inter, sans-serif" }}>
+                        {hours > 0 ? `${hours}h` : ""}
+                      </div>
+                      <div style={{
+                        width: "100%", borderRadius: "4px 4px 0 0",
+                        background: hours > 0 ? prodColor : "var(--surface2)",
+                        height: `${Math.round((hours / dayProdMax) * 72)}px`,
+                        minHeight: 4,
+                        transition: "height 0.5s ease",
+                        boxShadow: hours > 0 ? `0 0 10px ${prodColor}50` : "none",
+                      }} />
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "Inter, sans-serif", fontWeight: 700 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 14 }}>
+                  Total this week: <span style={{ color: prodColor, fontWeight: 700 }}>{weeklyProdHours}h</span>
+                </div>
+              </div>
+              <CategoryToggles categories={categories} productivityCatIds={productivityCatIds} stats={stats.byCategory} onToggle={toggleProductivityCat} />
+            </div>
+          )}
+
+          {/* Period: MONTH */}
+          {prodPeriod === "month" && (
+            <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div style={{ minWidth: 160 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginBottom: 6 }}>{monthName}</div>
+                {monthLoading ? (
+                  <div style={{ fontSize: 13, color: "var(--muted)", fontFamily: "Inter, sans-serif" }}>Loading…</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 56, fontWeight: 900, fontFamily: "Inter, sans-serif", letterSpacing: "-3px", lineHeight: 1, color: prodColor, textShadow: `0 0 28px ${prodColor}50` }}>
+                      {monthlyProdHours}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 4 }}>
+                      hrs this month · {Math.round(monthlyProdHours / (monthWeekIds.length * 168) * 100)}% avg
+                    </div>
+                    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {monthWeekIds.map((wid, i) => {
+                        const wLabel = `W${i + 1}`;
+                        return (
+                          <div key={wid} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "Inter, sans-serif", fontWeight: 700, width: 22 }}>{wLabel}</div>
+                            <div style={{ flex: 1, height: 8, background: "var(--surface2)", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 4, background: prodColor,
+                                width: monthlyProdHours > 0
+                                  ? `${Math.round(productivityCatIds.reduce((s, id) => s + monthEntries.filter(e => e.weekId === wid && e.category === id).length, 0) / Math.max(monthlyProdHours, 1) * 100)}%`
+                                  : "0%",
+                                transition: "width 0.7s ease",
+                              }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+              <CategoryToggles categories={categories} productivityCatIds={productivityCatIds} stats={stats.byCategory} onToggle={toggleProductivityCat} />
+            </div>
+          )}
+
+          {/* Period: PICK A DAY */}
+          {prodPeriod === "pick" && (
+            <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div style={{ minWidth: 200 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <input
+                    type="date"
+                    value={pickDate}
+                    onChange={e => setPickDate(e.target.value)}
+                    style={{
+                      padding: "8px 12px", background: "var(--surface2)",
+                      border: "1px solid var(--border)", borderRadius: 8,
+                      color: "var(--text)", fontSize: 13, outline: "none",
+                      fontFamily: "Inter, sans-serif", cursor: "pointer",
+                    }}
+                  />
+                </div>
+                {pickLoading ? (
+                  <div style={{ fontSize: 13, color: "var(--muted)", fontFamily: "Inter, sans-serif" }}>Loading…</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginBottom: 6 }}>{pickDateLabel}</div>
+                    <div style={{ fontSize: 56, fontWeight: 900, fontFamily: "Inter, sans-serif", letterSpacing: "-3px", lineHeight: 1, color: prodColor, textShadow: `0 0 28px ${prodColor}50` }}>
+                      {dayProdHours}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 4 }}>
+                      productive hrs · {Math.round(dayProdHours / 24 * 100)}% of day
+                    </div>
+                    <div style={{ height: 6, background: "var(--surface2)", borderRadius: 3, overflow: "hidden", marginTop: 12, maxWidth: 160 }}>
+                      <div style={{ height: "100%", width: `${Math.round(dayProdHours / 24 * 100)}%`, background: `linear-gradient(90deg, ${prodColor}80, ${prodColor})`, borderRadius: 3, transition: "width 1s ease" }} />
+                    </div>
+                    {pickEntries.length === 0 && (
+                      <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", marginTop: 14, fontStyle: "italic" }}>
+                        No entries for this day
+                      </div>
+                    )}
+                    {pickEntries.length > 0 && (
+                      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+                        {categories.filter(c => productivityCatIds.includes(c.id) && pickEntries.some(e => e.category === c.id)).map(c => {
+                          const h = pickEntries.filter(e => e.category === c.id).length;
+                          return (
+                            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "Inter, sans-serif" }}>
+                              <div style={{ width: 8, height: 8, borderRadius: 2, background: c.color, flexShrink: 0 }} />
+                              <span style={{ flex: 1, color: "var(--text-dim)" }}>{c.name}</span>
+                              <span style={{ fontWeight: 700, color: c.color }}>{h}h</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <CategoryToggles categories={categories} productivityCatIds={productivityCatIds} stats={stats.byCategory} onToggle={toggleProductivityCat} />
+            </div>
+          )}
         </div>
 
         {/* Productivity Score */}
         <div style={{
-          padding: "24px 28px",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 16,
-          display: "flex",
-          alignItems: "center",
-          gap: 28,
-          flexWrap: "wrap",
+          padding: "24px 28px", background: "var(--surface)",
+          border: `1px solid ${scoreColor}30`, borderRadius: 16,
+          display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap",
           boxShadow: `0 0 40px ${scoreColor}10`,
-          borderColor: `${scoreColor}30`,
         }}>
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 8 }}>Productivity Score</div>
@@ -275,14 +448,13 @@ export default function AnalyticsPage() {
               }} />
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Inter, sans-serif", lineHeight: 1.7 }}>
-              Based on <span style={{ color: "#a78bfa" }}>learning</span>, <span style={{ color: "#f87171" }}>work</span> & <span style={{ color: "#34d399" }}>self-improvement</span> vs <span style={{ color: "#78716c" }}>wasted time</span>.
+              Based on <span style={{ color: "#a78bfa" }}>learning</span>, <span style={{ color: "#f87171" }}>work</span> &amp; <span style={{ color: "#34d399" }}>self-improvement</span> vs <span style={{ color: "#78716c" }}>wasted time</span>.
             </div>
           </div>
         </div>
 
         {/* Charts */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-          {/* Pie */}
           <div style={cardStyle}>
             <SectionTitle>Time Distribution</SectionTitle>
             {pieData.length > 0 ? (
@@ -310,7 +482,6 @@ export default function AnalyticsPage() {
             ) : <EmptyState />}
           </div>
 
-          {/* Bar */}
           <div style={cardStyle}>
             <SectionTitle>Daily Breakdown</SectionTitle>
             {entries.length > 0 ? (
@@ -320,7 +491,7 @@ export default function AnalyticsPage() {
                   <XAxis dataKey="day" tick={{ fill: "var(--muted)", fontSize: 10, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: "var(--muted)", fontSize: 10, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 11, fontFamily: "Inter, sans-serif" }} />
-                  {activeCats.map(c => <Bar key={c.id} dataKey={c.name} stackId="a" fill={c.color} radius={[0,0,0,0]} />)}
+                  {activeCats.map(c => <Bar key={c.id} dataKey={c.name} stackId="a" fill={c.color} />)}
                 </BarChart>
               </ResponsiveContainer>
             ) : <EmptyState />}
@@ -346,12 +517,9 @@ export default function AnalyticsPage() {
                       key={`${hour}-${d}`}
                       title={day.name ?? "Empty"}
                       style={{
-                        height: 13,
-                        borderRadius: 2,
+                        height: 13, borderRadius: 2,
                         background: day.color ? `${day.color}bb` : "var(--surface2)",
-                        border: "1px solid var(--border-dim)",
-                        transition: "filter 0.08s",
-                        cursor: "default",
+                        border: "1px solid var(--border-dim)", transition: "filter 0.08s", cursor: "default",
                       }}
                       onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.6)"}
                       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "none"}
@@ -370,15 +538,9 @@ export default function AnalyticsPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
               {insights.map((ins, i) => (
                 <div key={i} style={{
-                  display: "flex", alignItems: "flex-start", gap: 10,
-                  padding: "12px 14px",
-                  background: "var(--surface2)",
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  fontSize: 13,
-                  color: "var(--text-dim)",
-                  fontFamily: "Inter, sans-serif",
-                  lineHeight: 1.5,
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px",
+                  background: "var(--surface2)", borderRadius: 10, border: "1px solid var(--border)",
+                  fontSize: 13, color: "var(--text-dim)", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
                 }}>
                   <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{ins.icon}</span>
                   {ins.text}
@@ -398,13 +560,7 @@ export default function AnalyticsPage() {
                 { l: "Avg/Night", v: `${Math.round(stats.sleepHours / 7 * 10) / 10}h` },
                 { l: "% of Week", v: `${Math.round(stats.sleepHours / 168 * 100)}%` },
               ].map(s => (
-                <div key={s.l} style={{
-                  padding: "14px 18px",
-                  background: "#1d4ed810",
-                  border: "1px solid #1d4ed840",
-                  borderRadius: 10,
-                  minWidth: 100,
-                }}>
+                <div key={s.l} style={{ padding: "14px 18px", background: "#1d4ed810", border: "1px solid #1d4ed840", borderRadius: 10, minWidth: 100 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 4 }}>{s.l}</div>
                   <div style={{ fontSize: 26, fontWeight: 900, color: "#93c5fd", fontFamily: "Inter, sans-serif", letterSpacing: "-1px" }}>{s.v}</div>
                 </div>
@@ -417,11 +573,57 @@ export default function AnalyticsPage() {
   );
 }
 
+// ── Shared sub-component: category toggle checkboxes ──
+function CategoryToggles({
+  categories, productivityCatIds, stats, onToggle
+}: {
+  categories: Category[];
+  productivityCatIds: string[];
+  stats: Record<string, number>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div style={{ flex: 1, minWidth: 220 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "Inter, sans-serif", marginBottom: 10 }}>
+        Count toward productivity
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 5 }}>
+        {categories.map(cat => {
+          const checked = productivityCatIds.includes(cat.id);
+          const hrs = stats[cat.id] || 0;
+          return (
+            <label key={cat.id} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+              borderRadius: 8, cursor: "pointer", transition: "all 0.15s", userSelect: "none",
+              background: checked ? `${cat.color}18` : "var(--surface2)",
+              border: `1px solid ${checked ? cat.color + "50" : "var(--border)"}`,
+            }}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onToggle(cat.id)}
+                style={{ accentColor: cat.color, width: 13, height: 13, cursor: "pointer", flexShrink: 0 }}
+              />
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: checked ? "var(--text)" : "var(--muted)", fontFamily: "Inter, sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {cat.name}
+              </span>
+              {hrs > 0 && (
+                <span style={{ fontSize: 11, color: checked ? cat.color : "var(--muted)", fontFamily: "Inter, sans-serif", fontWeight: 700, flexShrink: 0 }}>
+                  {hrs}h
+                </span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const cardStyle: React.CSSProperties = {
-  padding: "20px",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 16,
+  padding: "20px", background: "var(--surface)",
+  border: "1px solid var(--border)", borderRadius: 16,
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
