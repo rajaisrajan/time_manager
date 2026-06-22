@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd 168hours && npm install && npm run build",
+  "installCommand": "cd 168hours && npm install",
+  "outputDirectory": "168hours/.next",
+  "framework": "nextjs"
+}
