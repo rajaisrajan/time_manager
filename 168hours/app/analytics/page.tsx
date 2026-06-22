@@ -189,7 +189,7 @@ export default function AnalyticsPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 12, fontFamily: "Inter, sans-serif" }}
-                      formatter={(v: number) => [`${v}h (${Math.round(v / 168 * 100)}%)`, ""]}
+                      formatter={(v) => [`${Number(v)}h (${Math.round(Number(v) / 168 * 100)}%)`, ""]}
                     />
                   </PieChart>
                 </ResponsiveContainer>

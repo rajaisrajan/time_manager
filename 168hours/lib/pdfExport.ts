@@ -109,12 +109,8 @@ export async function exportToPDF(weekId: string, entries: HourEntry[], categori
     alternateRowStyles: {
       fillColor: SURFACE2,
     },
-    didDrawCell: (data: {
-      section: string;
-      column: { index: number };
-      row: { index: number };
-      cell: { styles: { fillColor: [number,number,number]; textColor: [number,number,number] } };
-    }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    didDrawCell: (data: any) => {
       if (data.section === "body" && data.column.index > 0) {
         const hour = data.row.index;
         const day = data.column.index - 1;
