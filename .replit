@@ -62,3 +62,8 @@ channel = "stable-25_05"
 deploymentTarget = "autoscale"
 run = ["bash", "-c", "cd 168hours && npm run start"]
 build = ["bash", "-c", "cd 168hours && npm run build"]
+
+[userenv]
+
+[userenv.shared]
+NEXT_PUBLIC_SUPABASE_URL = "https://ohgkrbmihwpppuujmgqs.supabase.co"
